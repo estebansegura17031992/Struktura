@@ -14,7 +14,7 @@ class Settings(BaseSettings):
     )
  
     # App
-    ENVIRONMENT: Literal["development", "production"] = "development"
+    ENVIRONMENT: Literal["development", "staging", "production"] = "development"
     DEBUG: bool = True
     APP_NAME: str = "Kanban MVP"
     APP_VERSION: str = "0.1.0"
@@ -57,7 +57,8 @@ class Settings(BaseSettings):
  
     @property
     def is_production(self) -> bool:
-        return self.ENVIRONMENT == "production"
+        """staging y production usan cookies Secure y sin stack traces en responses."""
+        return self.ENVIRONMENT in ("production", "staging")
  
  
 @lru_cache

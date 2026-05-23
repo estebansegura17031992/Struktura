@@ -1,0 +1,19 @@
+# Env — NUNCA commitear
+.env
+.env.local
+.env.*.local
+.env.example
+.env.*.example
+
+# IDE
+.vscode/
+.idea/
+*.swp
+ 
+# OS
+.DS_Store
+Thumbs.db
+
+# Node Modules
+node_modules/
+package-lock.json

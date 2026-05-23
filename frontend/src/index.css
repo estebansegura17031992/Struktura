@@ -1,0 +1,20 @@
+/* index.css — Estilos globales Sprint 1 */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+ 
+/* Material Symbols — iconos del design system */
+@import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap');
+ 
+/* Focus visible global — accesibilidad */
+:focus-visible {
+  outline: 2px solid theme('colors.secondary');
+  outline-offset: 2px;
+}
+ 
+/* Remove spinner en inputs número */
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}

@@ -1,7 +1,6 @@
 """
-Alembic env.py — usa la URL sync de pydantic-settings.
-Importa registry.py (no base.py) para cargar todos los modelos
-sin causar importaciones circulares.
+Alembic env.py — usa DATABASE_URL_SYNC (psycopg2, no asyncpg).
+DATABASE_URL (asyncpg) es solo para uvicorn/SQLAlchemy async.
 """
 import os
 import sys
@@ -12,12 +11,18 @@ from sqlalchemy import engine_from_config, pool
  
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
  
-from app.core.config import settings   # noqa: E402
-from app.db.base import Base           # noqa: E402
-import app.db.registry                 # noqa: E402, F401 — registra todos los modelos
+from app.core.config import settings  # noqa: E402
+from app.db.base import Base          # noqa: E402
+import app.db.registry                # noqa: E402, F401
  
 config = context.config
-config.set_main_option("sqlalchemy.url", settings.DATABASE_URL_SYNC)
+ 
+# Usar DATABASE_URL_SYNC — psycopg2 síncrono, compatible con Alembic
+sync_url = settings.DATABASE_URL_SYNC
+if not sync_url:
+    raise ValueError("DATABASE_URL_SYNC no está configurada")
+ 
+config.set_main_option("sqlalchemy.url", sync_url)
  
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
@@ -26,9 +31,8 @@ target_metadata = Base.metadata
  
  
 def run_migrations_offline() -> None:
-    url = config.get_main_option("sqlalchemy.url")
     context.configure(
-        url=url,
+        url=sync_url,
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},

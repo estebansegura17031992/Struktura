@@ -29,5 +29,5 @@ def test_access_token_encode_decode():
 def test_access_token_invalid_raises():
     import pytest
 
-    with pytest.raises(Exception):
+    with pytest.raises(TokenInvalidError):
         decode_access_token("token.invalido.aqui")

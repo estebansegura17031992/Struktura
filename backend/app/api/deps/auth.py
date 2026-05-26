@@ -32,7 +32,7 @@ async def get_current_user(
         if not user_id:
             raise TokenInvalidError()
     except JWTError:
-        raise TokenInvalidError()
+        raise TokenInvalidError() from None
 
     repo = UserRepository(db)
     user = await repo.get_by_id(UUID(user_id))

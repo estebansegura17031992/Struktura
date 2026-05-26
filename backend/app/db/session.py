@@ -64,8 +64,5 @@ class _LazySessionLocal:
     def __call__(self, *args, **kwargs):
         return get_session_factory()(*args, **kwargs)
 
-    def __call__(self):
-        return get_session_factory()()
-
 
 AsyncSessionLocal = get_session_factory

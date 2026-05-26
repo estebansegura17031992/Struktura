@@ -19,5 +19,5 @@ def validate_timezone(tz: str) -> str:
     try:
         ZoneInfo(tz)
     except (ZoneInfoNotFoundError, KeyError):
-        raise InvalidTimezoneError(tz)
+        raise InvalidTimezoneError(tz) from None
     return tz

@@ -1,6 +1,8 @@
 # .github/workflows/ci.yml
 # Pipeline CI — Kanban MVP Backend
-# Ejecuta lint, type-check y tests en cada PR y push a staging/main.
+# Lint + type-check + tests unitarios + tests de integración
+# Se ejecuta en cada PR y push a staging/main.
+# Un PR no puede mergearse si cualquier step falla.
 
 name: CI
 
@@ -14,17 +16,28 @@ on:
       - main
       - staging
 
-# Cancela ejecuciones anteriores del mismo PR para ahorrar minutos de Actions
+# Cancela ejecuciones anteriores del mismo PR al recibir un nuevo push.
+# Ahorra minutos de Actions en PRs con commits frecuentes.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# ─── Directorio de trabajo por defecto ───────────────────────
+# Si tu repo es un monorepo (backend/ y frontend/ en la raíz),
+# descomenta la línea de working-directory y ajusta la ruta.
+# Si requirements.txt está en la raíz del repo, deja esto comentado.
+#
+# defaults:
+#   run:
+#     working-directory: backend
+
 jobs:
 
-  # ─────────────────────────────────────────────
+  # ─────────────────────────────────────────────────────────────
   # JOB 1: Lint y type-check
-  # Rápido (~60s). No necesita DB.
-  # ─────────────────────────────────────────────
+  # Rápido (~60s). No necesita base de datos.
+  # Falla rápido antes de levantar PostgreSQL si hay errores de código.
+  # ─────────────────────────────────────────────────────────────
   lint-and-typecheck:
     name: Lint & Type Check
     runs-on: ubuntu-latest
@@ -32,6 +45,14 @@ jobs:
     steps:
       - name: Checkout del código
         uses: actions/checkout@v4
+
+      - name: Verificar estructura del repositorio
+        run: |
+          echo "=== Raíz del repositorio ==="
+          ls -la
+          echo ""
+          echo "=== Buscando requirements.txt ==="
+          find . -name "requirements.txt" -not -path "./.git/*"
 
       - name: Configurar Python 3.11
         uses: actions/setup-python@v5
@@ -53,16 +74,16 @@ jobs:
       - name: Mypy — type checking
         run: mypy app/
 
-  # ─────────────────────────────────────────────
+  # ─────────────────────────────────────────────────────────────
   # JOB 2: Tests unitarios e integración
-  # Necesita PostgreSQL. Depende de lint-and-typecheck.
-  # ─────────────────────────────────────────────
+  # Levanta PostgreSQL 15 como servicio efímero.
+  # Solo corre si lint-and-typecheck pasó.
+  # ─────────────────────────────────────────────────────────────
   test:
     name: Tests (unit + integration)
     runs-on: ubuntu-latest
-    needs: lint-and-typecheck   # No ejecuta si el lint falla
+    needs: lint-and-typecheck
 
-    # PostgreSQL 15 como servicio efímero
     services:
       postgres:
         image: postgres:15-alpine
@@ -78,8 +99,6 @@ jobs:
           --health-timeout 5s
           --health-retries 10
 
-    # Variables de entorno para los tests
-    # Los valores sensibles vienen de los Secrets configurados en GitHub
     env:
       ENVIRONMENT: test
       ENABLE_DOCS: "false"
@@ -114,7 +133,7 @@ jobs:
             echo "Esperando PostgreSQL..."
             sleep 2
           done
-          echo "PostgreSQL listo"
+          echo "PostgreSQL listo ✓"
 
       - name: Aplicar migraciones Alembic
         run: alembic upgrade head
@@ -126,7 +145,7 @@ jobs:
             --quiet \
             -v
 
-      - name: Tests de integración
+      - name: Tests de integración con cobertura
         run: |
           pytest tests/integration/ \
             --tb=short \
@@ -137,10 +156,10 @@ jobs:
             --cov-report=xml:coverage.xml \
             --cov-fail-under=70
 
-      - name: Publicar reporte de cobertura
+      - name: Publicar reporte de cobertura en Codecov
         uses: codecov/codecov-action@v4
-        if: always()   # Publicar aunque los tests fallen, para ver la cobertura
+        if: always()
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: ./coverage.xml
-          fail_ci_if_error: false   # No fallar el CI si Codecov no está disponible
+          fail_ci_if_error: false

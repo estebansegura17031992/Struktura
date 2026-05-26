@@ -27,9 +27,9 @@ concurrency:
 # descomenta la línea de working-directory y ajusta la ruta.
 # Si requirements.txt está en la raíz del repo, deja esto comentado.
 #
-# defaults:
-#   run:
-#     working-directory: backend
+defaults:
+  run:
+    working-directory: backend
 
 jobs:
 

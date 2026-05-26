@@ -6,20 +6,17 @@ from unittest.mock import AsyncMock, patch
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
 
-from app.api.deps.db import get_db  # era: app.dependencies
-from app.core.config import settings  # era: app.config
-from app.db.base import Base  # era: app.database
+from app.api.deps.db import get_db
+from app.core.config import settings
+from app.db.base import Base
 from app.main import app
 
 # ─── Engine de tests ──────────────────────────────────────
-# Usa TEST_DATABASE_URL si existe; si no, usa DATABASE_URL
-# En CI ambas apuntan a kanban_test (la DB efímera del servicio)
-TEST_DATABASE_URL = (
-    getattr(settings, "TEST_DATABASE_URL", None) or settings.DATABASE_URL
-)
+TEST_DATABASE_URL = getattr(settings, "TEST_DATABASE_URL", None) or settings.DATABASE_URL
 
 test_engine = create_async_engine(
     TEST_DATABASE_URL,
@@ -51,8 +48,10 @@ async def setup_database():
     async with test_engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     yield
+    # DROP SCHEMA CASCADE evita el error de foreign keys al limpiar
     async with test_engine.begin() as conn:
-        await conn.run_sync(Base.metadata.drop_all)
+        await conn.execute(text("DROP SCHEMA public CASCADE"))
+        await conn.execute(text("CREATE SCHEMA public"))
 
 
 @pytest_asyncio.fixture
@@ -77,13 +76,10 @@ async def client(db_session: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
 
     app.dependency_overrides[get_db] = override_get_db
 
-    # CRÍTICO: mockear el servicio de email en CI
-    # Sin este mock, los tests de register y forgot-password intentan
-    # llamar a la API de Resend y fallan por credenciales inválidas en CI.
     with patch(
         "app.services.email_service.send_email", new_callable=AsyncMock
     ) as mock_email:
-        mock_email.return_value = True  # simula envío exitoso
+        mock_email.return_value = True
         async with AsyncClient(
             transport=ASGITransport(app=app),
             base_url="http://test",
@@ -98,7 +94,7 @@ async def client(db_session: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
 
 @pytest_asyncio.fixture
 async def test_user(client: AsyncClient) -> dict:
-    """Crea y verifica un usuario de prueba. Retorna { id, email, token }."""
+    """Crea un usuario de prueba. Retorna { id, email }."""
     response = await client.post(
         "/auth/register",
         json={
@@ -110,10 +106,7 @@ async def test_user(client: AsyncClient) -> dict:
         },
     )
     assert response.status_code == 201, response.json()
-
-    user_id = response.json()["id"]
-
-    return {"id": user_id, "email": "test@kanban.dev"}
+    return {"id": response.json()["id"], "email": "test@kanban.dev"}
 
 
 @pytest_asyncio.fixture

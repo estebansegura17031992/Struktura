@@ -1,19 +1,17 @@
 # tests/conftest.py
 """
-Estrategia de aislamiento entre tests:
-- El engine y las migraciones se crean UNA VEZ para toda la sesión.
-- Entre tests se hace TRUNCATE de todas las tablas en lugar de rollback.
-  Esto evita el error "Future attached to a different loop" que ocurre
-  cuando el teardown del fixture function-scoped intenta hacer rollback
-  en un loop diferente al loop de sesión (bug conocido de pytest-asyncio
-  0.23 con asyncpg).
+pytest-asyncio >= 0.24 introduce loop_scope para fixtures de sesión.
+Con asyncio_default_fixture_loop_scope = "session" en pyproject.toml,
+todos los fixtures async comparten el mismo event loop — resuelve el
+error "Future attached to a different loop" de la versión 0.23.
+
+Ya no se necesita el fixture event_loop custom ni scope tricks.
 """
 
 import asyncio
 from collections.abc import AsyncGenerator
 from unittest.mock import AsyncMock, patch
 
-import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import text
@@ -30,9 +28,7 @@ TEST_DATABASE_URL = (
     getattr(settings, "TEST_DATABASE_URL", None) or settings.DATABASE_URL
 )
 
-# Tablas a limpiar entre tests — en orden que respeta FK constraints.
-# ON DELETE CASCADE en la migración cubre la mayoría, pero el orden importa
-# para las que no tienen cascade.
+# Tablas en orden que respeta FK — se truncan entre tests
 _TRUNCATE_TABLES = [
     "audit_logs",
     "password_reset_tokens",
@@ -51,31 +47,21 @@ def _run_alembic_upgrade() -> None:
     command.upgrade(alembic_cfg, "head")
 
 
-# ─── Event loop compartido ────────────────────────────────
-
-
-@pytest.fixture(scope="session")
-def event_loop():
-    loop = asyncio.new_event_loop()
-    yield loop
-    loop.close()
-
-
-# ─── Engine de sesión ─────────────────────────────────────
+# ─── Engine y migraciones — scope session ────────────────
 
 
 @pytest_asyncio.fixture(scope="session")
 async def db_engine():
     """
-    Crea el engine DENTRO del fixture de sesión (mismo loop que pytest-asyncio).
-    Aplica migraciones una sola vez y limpia al finalizar.
+    Engine creado una sola vez para toda la sesión.
+    Con pytest-asyncio 0.24 + asyncio_default_fixture_loop_scope="session"
+    este fixture comparte el mismo loop que todos los tests.
     """
     engine = create_async_engine(
         TEST_DATABASE_URL,
         echo=False,
         future=True,
-        # Pool pequeño para tests — evita conexiones huérfanas
-        pool_size=2,
+        pool_size=5,
         max_overflow=0,
     )
 
@@ -91,11 +77,9 @@ async def db_engine():
 
     yield engine
 
-    # Cerrar TODAS las conexiones del pool antes de DROP SCHEMA.
-    # Si hay conexiones abiertas, asyncpg lanza "another operation is in progress".
+    # Teardown: cerrar todas las conexiones del pool antes de DROP
     await engine.dispose()
 
-    # Reconectar con un engine limpio para el cleanup final
     cleanup_engine = create_async_engine(TEST_DATABASE_URL, echo=False, future=True)
     try:
         async with cleanup_engine.connect() as conn:
@@ -104,9 +88,6 @@ async def db_engine():
             await conn.commit()
     finally:
         await cleanup_engine.dispose()
-
-
-# ─── Session factory de sesión ────────────────────────────
 
 
 @pytest_asyncio.fixture(scope="session")
@@ -124,12 +105,8 @@ async def session_factory(db_engine):
 
 @pytest_asyncio.fixture(autouse=True)
 async def clean_tables(db_engine):
-    """
-    Trunca todas las tablas ANTES de cada test para garantizar aislamiento.
-    Se usa TRUNCATE en lugar de rollback para evitar conflictos de event loop.
-    """
+    """Trunca todas las tablas DESPUÉS de cada test."""
     yield
-    # Limpiar DESPUÉS del test
     async with db_engine.connect() as conn:
         tables = ", ".join(_TRUNCATE_TABLES)
         try:
@@ -138,7 +115,6 @@ async def clean_tables(db_engine):
             )
             await conn.commit()
         except Exception:
-            # Si alguna tabla no existe todavía, ignorar
             await conn.rollback()
 
 
@@ -147,7 +123,7 @@ async def clean_tables(db_engine):
 
 @pytest_asyncio.fixture
 async def db_session(session_factory) -> AsyncGenerator[AsyncSession, None]:
-    """Sesión fresca para cada test. Sin rollback — la limpieza la hace clean_tables."""
+    """Sesión fresca por test — sin rollback (lo maneja clean_tables)."""
     async with session_factory() as session:
         yield session
 
@@ -157,8 +133,6 @@ async def db_session(session_factory) -> AsyncGenerator[AsyncSession, None]:
 
 @pytest_asyncio.fixture
 async def client(db_session: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
-    """Cliente con DB override y emails mockeados."""
-
     async def override_get_db():
         yield db_session
 
@@ -187,7 +161,7 @@ async def client(db_session: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
 
 @pytest_asyncio.fixture
 async def client_no_db_override() -> AsyncGenerator[AsyncClient, None]:
-    """Cliente SIN override de DB — para tests de /health."""
+    """Para tests de /health que usan la DB real."""
     with (
         patch(
             "app.services.auth_service.send_verification_email",

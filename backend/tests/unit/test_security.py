@@ -1,4 +1,7 @@
 # tests/unit/test_security.py
+import pytest
+from app.core.security import decode_access_token, create_access_token, hash_password, verify_password
+from app.core.exceptions import TokenInvalidError
 from app.core.security import (
     create_access_token,
     decode_access_token,

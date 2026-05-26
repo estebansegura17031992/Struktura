@@ -93,9 +93,9 @@ async def db_session() -> AsyncGenerator[AsyncSession, None]:
 @pytest_asyncio.fixture
 async def client(db_session: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
     """
-    Cliente HTTP de tests.
-    Sobreescribe get_db para usar la sesión de tests con rollback.
-    Mockea el servicio de email para que no se envíen emails reales en CI.
+    Cliente HTTP de tests con DB override y emails mockeados.
+    Mockea send_verification_email y send_reset_password_email donde
+    el auth_service las importa, no en el módulo email_service.
     """
 
     async def override_get_db():
@@ -103,10 +103,18 @@ async def client(db_session: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
 
     app.dependency_overrides[get_db] = override_get_db
 
-    with patch(
-        "app.services.email_service.send_email", new_callable=AsyncMock
-    ) as mock_email:
-        mock_email.return_value = True
+    with (
+        patch(
+            "app.services.auth_service.send_verification_email",
+            new_callable=AsyncMock,
+        ) as mock_verify,
+        patch(
+            "app.services.auth_service.send_reset_password_email",
+            new_callable=AsyncMock,
+        ) as mock_reset,
+    ):
+        mock_verify.return_value = None
+        mock_reset.return_value = None
         async with AsyncClient(
             transport=ASGITransport(app=app),
             base_url="http://test",
@@ -116,6 +124,33 @@ async def client(db_session: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
     app.dependency_overrides.clear()
 
 
+@pytest_asyncio.fixture
+async def client_no_db_override() -> AsyncGenerator[AsyncClient, None]:
+    """
+    Cliente HTTP de tests SIN override de DB.
+    Usa la conexión real — para tests que verifican la DB directamente
+    (ej: /health que comprueba la conexión real a PostgreSQL).
+    Los emails siguen mockeados para no consumir cuota de Resend.
+    """
+    with (
+        patch(
+            "app.services.auth_service.send_verification_email",
+            new_callable=AsyncMock,
+        ) as mock_verify,
+        patch(
+            "app.services.auth_service.send_reset_password_email",
+            new_callable=AsyncMock,
+        ) as mock_reset,
+    ):
+        mock_verify.return_value = None
+        mock_reset.return_value = None
+        async with AsyncClient(
+            transport=ASGITransport(app=app),
+            base_url="http://test",
+        ) as ac:
+            yield ac
+
+
 # ─── Fixtures de datos de prueba ──────────────────────────
 
 
@@ -123,7 +158,7 @@ async def client(db_session: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
 async def test_user(client: AsyncClient) -> dict:
     """Crea un usuario de prueba. Retorna { id, email }."""
     response = await client.post(
-        "/auth/register",
+        "/api/v1/auth/register",
         json={
             "email": "test@kanban.dev",
             "username": "testuser",
@@ -140,7 +175,7 @@ async def test_user(client: AsyncClient) -> dict:
 async def auth_headers(client: AsyncClient, test_user: dict) -> dict:
     """Retorna los headers de Authorization para un usuario autenticado."""
     response = await client.post(
-        "/auth/login",
+        "/api/v1/auth/login",
         json={
             "email": test_user["email"],
             "password": "Test1234!",

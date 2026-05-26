@@ -10,9 +10,11 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
 
+from alembic import command
+from alembic.config import Config
 from app.api.deps.db import get_db
 from app.core.config import settings
-from app.db.base import Base
+from app.db import registry  # noqa: F401 — registra todos los modelos para Alembic
 from app.main import app
 
 # ─── Engine de tests ──────────────────────────────────────
@@ -33,6 +35,15 @@ TestSessionLocal = sessionmaker(
 )
 
 
+# ─── Helpers de migración ─────────────────────────────────
+
+
+def run_alembic_upgrade():
+    """Aplica todas las migraciones incluyendo la creación de ENUMs."""
+    alembic_cfg = Config("alembic.ini")
+    command.upgrade(alembic_cfg, "head")
+
+
 # ─── Fixtures ─────────────────────────────────────────────
 
 
@@ -46,11 +57,23 @@ def event_loop():
 
 @pytest_asyncio.fixture(scope="session", autouse=True)
 async def setup_database():
-    """Crea las tablas antes de todos los tests y las elimina al final."""
+    """
+    Aplica migraciones de Alembic antes de todos los tests.
+    Alembic crea los ENUMs (user_role, etc.) antes de las tablas.
+    Al finalizar limpia el schema completo con CASCADE.
+    """
+    # Limpiar schema por si quedó algo de una ejecución anterior
     async with test_engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+        await conn.execute(text("DROP SCHEMA public CASCADE"))
+        await conn.execute(text("CREATE SCHEMA public"))
+
+    # Aplicar migraciones en hilo separado (Alembic es síncrono)
+    loop = asyncio.get_event_loop()
+    await loop.run_in_executor(None, run_alembic_upgrade)
+
     yield
-    # DROP SCHEMA CASCADE evita el error de foreign keys al limpiar
+
+    # Limpiar al finalizar todos los tests
     async with test_engine.begin() as conn:
         await conn.execute(text("DROP SCHEMA public CASCADE"))
         await conn.execute(text("CREATE SCHEMA public"))
@@ -70,6 +93,7 @@ async def client(db_session: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
     """
     Cliente HTTP de tests.
     Sobreescribe get_db para usar la sesión de tests con rollback.
+    NO sobreescribe el health endpoint — necesita su propia conexión real.
     Mockea el servicio de email para que no se envíen emails reales en CI.
     """
 
@@ -79,9 +103,9 @@ async def client(db_session: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
     app.dependency_overrides[get_db] = override_get_db
 
     with patch(
-        "app.services.email_service.send_email", new_callable=AsyncMock
+        "app.services.email_service._send", new_callable=AsyncMock
     ) as mock_email:
-        mock_email.return_value = True
+        mock_email.return_value = None
         async with AsyncClient(
             transport=ASGITransport(app=app),
             base_url="http://test",
@@ -91,6 +115,23 @@ async def client(db_session: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
     app.dependency_overrides.clear()
 
 
+@pytest_asyncio.fixture
+async def client_no_db_override() -> AsyncGenerator[AsyncClient, None]:
+    """
+    Cliente HTTP sin override de DB.
+    Usar para endpoints que necesitan su propia conexión real (health check).
+    """
+    with patch(
+        "app.services.email_service._send", new_callable=AsyncMock
+    ) as mock_email:
+        mock_email.return_value = None
+        async with AsyncClient(
+            transport=ASGITransport(app=app),
+            base_url="http://test",
+        ) as ac:
+            yield ac
+
+
 # ─── Fixtures de datos de prueba ──────────────────────────
 
 
@@ -98,7 +139,7 @@ async def client(db_session: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
 async def test_user(client: AsyncClient) -> dict:
     """Crea un usuario de prueba. Retorna { id, email }."""
     response = await client.post(
-        "/auth/register",
+        "/api/v1/auth/register",
         json={
             "email": "test@kanban.dev",
             "username": "testuser",
@@ -115,7 +156,7 @@ async def test_user(client: AsyncClient) -> dict:
 async def auth_headers(client: AsyncClient, test_user: dict) -> dict:
     """Retorna los headers de Authorization para un usuario autenticado."""
     response = await client.post(
-        "/auth/login",
+        "/api/v1/auth/login",
         json={
             "email": test_user["email"],
             "password": "Test1234!",

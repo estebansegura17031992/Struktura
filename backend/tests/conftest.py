@@ -63,9 +63,10 @@ async def setup_database():
     Al finalizar limpia el schema completo con CASCADE.
     """
     # Limpiar schema por si quedó algo de una ejecución anterior
-    async with test_engine.begin() as conn:
+    async with test_engine.connect() as conn:
         await conn.execute(text("DROP SCHEMA public CASCADE"))
         await conn.execute(text("CREATE SCHEMA public"))
+        await conn.commit()
 
     # Aplicar migraciones en hilo separado (Alembic es síncrono)
     loop = asyncio.get_event_loop()
@@ -74,9 +75,10 @@ async def setup_database():
     yield
 
     # Limpiar al finalizar todos los tests
-    async with test_engine.begin() as conn:
+    async with test_engine.connect() as conn:
         await conn.execute(text("DROP SCHEMA public CASCADE"))
         await conn.execute(text("CREATE SCHEMA public"))
+        await conn.commit()
 
 
 @pytest_asyncio.fixture
@@ -93,7 +95,6 @@ async def client(db_session: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
     """
     Cliente HTTP de tests.
     Sobreescribe get_db para usar la sesión de tests con rollback.
-    NO sobreescribe el health endpoint — necesita su propia conexión real.
     Mockea el servicio de email para que no se envíen emails reales en CI.
     """
 
@@ -103,9 +104,9 @@ async def client(db_session: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
     app.dependency_overrides[get_db] = override_get_db
 
     with patch(
-        "app.services.email_service._send", new_callable=AsyncMock
+        "app.services.email_service.send_email", new_callable=AsyncMock
     ) as mock_email:
-        mock_email.return_value = None
+        mock_email.return_value = True
         async with AsyncClient(
             transport=ASGITransport(app=app),
             base_url="http://test",
@@ -115,23 +116,6 @@ async def client(db_session: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
     app.dependency_overrides.clear()
 
 
-@pytest_asyncio.fixture
-async def client_no_db_override() -> AsyncGenerator[AsyncClient, None]:
-    """
-    Cliente HTTP sin override de DB.
-    Usar para endpoints que necesitan su propia conexión real (health check).
-    """
-    with patch(
-        "app.services.email_service._send", new_callable=AsyncMock
-    ) as mock_email:
-        mock_email.return_value = None
-        async with AsyncClient(
-            transport=ASGITransport(app=app),
-            base_url="http://test",
-        ) as ac:
-            yield ac
-
-
 # ─── Fixtures de datos de prueba ──────────────────────────
 
 
@@ -139,7 +123,7 @@ async def client_no_db_override() -> AsyncGenerator[AsyncClient, None]:
 async def test_user(client: AsyncClient) -> dict:
     """Crea un usuario de prueba. Retorna { id, email }."""
     response = await client.post(
-        "/api/v1/auth/register",
+        "/auth/register",
         json={
             "email": "test@kanban.dev",
             "username": "testuser",
@@ -156,7 +140,7 @@ async def test_user(client: AsyncClient) -> dict:
 async def auth_headers(client: AsyncClient, test_user: dict) -> dict:
     """Retorna los headers de Authorization para un usuario autenticado."""
     response = await client.post(
-        "/api/v1/auth/login",
+        "/auth/login",
         json={
             "email": test_user["email"],
             "password": "Test1234!",

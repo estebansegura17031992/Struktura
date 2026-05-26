@@ -1,16 +1,55 @@
+# pyproject.toml
+
+[tool.ruff]
+target-version = "py311"
+line-length = 88
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "N",   # pep8-naming
+    "UP",  # pyupgrade
+    "B",   # flake8-bugbear
+]
+ignore = [
+    "E501",  # line too long (ruff format lo maneja)
+    "B008",  # do not perform function calls in argument defaults (FastAPI Depends)
+]
+exclude = ["alembic/"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.mypy]
+python_version = "3.11"
+strict = false
+ignore_missing_imports = true
+disallow_untyped_defs = true
+check_untyped_defs = true
+warn_return_any = false
+exclude = ["alembic/"]
+plugins = ["sqlalchemy.ext.mypy.plugin"]
+
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
 python_files = ["test_*.py"]
- 
-[tool.ruff]
-line-length = 100
-target-version = "py311"
- 
-[tool.ruff.lint]
-select = ["E", "F", "I", "N", "UP"]
-ignore = ["E501"]
- 
+python_functions = ["test_*"]
+addopts = "--tb=short"
+
 [tool.coverage.run]
 source = ["app"]
-omit = ["app/db/migrations/*"]
+omit = [
+    "app/main.py",        # solo registra routers, poco lógica
+    "alembic/*",
+    "tests/*",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+]

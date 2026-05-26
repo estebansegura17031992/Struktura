@@ -9,15 +9,17 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
 
+from app.api.deps.db import get_db  # era: app.dependencies
 from app.core.config import settings  # era: app.config
 from app.db.base import Base  # era: app.database
-from app.api.deps.db import get_db  # era: app.dependencies
 from app.main import app
 
 # ─── Engine de tests ──────────────────────────────────────
 # Usa TEST_DATABASE_URL si existe; si no, usa DATABASE_URL
 # En CI ambas apuntan a kanban_test (la DB efímera del servicio)
-TEST_DATABASE_URL = getattr(settings, "TEST_DATABASE_URL", None) or settings.DATABASE_URL
+TEST_DATABASE_URL = (
+    getattr(settings, "TEST_DATABASE_URL", None) or settings.DATABASE_URL
+)
 
 test_engine = create_async_engine(
     TEST_DATABASE_URL,

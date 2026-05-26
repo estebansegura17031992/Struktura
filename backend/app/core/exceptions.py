@@ -4,7 +4,7 @@ El handler global en main.py las convierte al formato { error: { code, message }
 """
 
 
-class AppException(Exception):
+class AppBaseError(Exception):
     """Base para excepciones de dominio."""
 
     def __init__(self, code: str, message: str, status_code: int = 400):
@@ -17,12 +17,12 @@ class AppException(Exception):
 # ── Auth ───────────────────────────────────────────────────────────────────────
 
 
-class InvalidCredentialsError(AppException):
+class InvalidCredentialsError(AppBaseError):
     def __init__(self):
         super().__init__("INVALID_CREDENTIALS", "Credenciales incorrectas", 401)
 
 
-class EmailNotVerifiedError(AppException):
+class EmailNotVerifiedError(AppBaseError):
     def __init__(self):
         super().__init__(
             "EMAIL_NOT_VERIFIED",
@@ -31,22 +31,22 @@ class EmailNotVerifiedError(AppException):
         )
 
 
-class TokenExpiredError(AppException):
+class TokenExpiredError(AppBaseError):
     def __init__(self):
         super().__init__("TOKEN_EXPIRED", "El token ha expirado", 401)
 
 
-class TokenInvalidError(AppException):
+class TokenInvalidError(AppBaseError):
     def __init__(self):
         super().__init__("TOKEN_INVALID", "Token inválido", 401)
 
 
-class TokenRevokedError(AppException):
+class TokenRevokedError(AppBaseError):
     def __init__(self):
         super().__init__("TOKEN_REVOKED", "Token revocado", 401)
 
 
-class MaxVerificationAttemptsError(AppException):
+class MaxVerificationAttemptsError(AppBaseError):
     def __init__(self):
         super().__init__(
             "MAX_VERIFICATION_ATTEMPTS",
@@ -58,27 +58,27 @@ class MaxVerificationAttemptsError(AppException):
 # ── Users ──────────────────────────────────────────────────────────────────────
 
 
-class EmailAlreadyExistsError(AppException):
+class EmailAlreadyExistsError(AppBaseError):
     def __init__(self):
         super().__init__("EMAIL_ALREADY_EXISTS", "El email ya está registrado", 409)
 
 
-class UsernameAlreadyExistsError(AppException):
+class UsernameAlreadyExistsError(AppBaseError):
     def __init__(self):
         super().__init__("USERNAME_ALREADY_EXISTS", "El username ya está en uso", 409)
 
 
-class UserNotFoundError(AppException):
+class UserNotFoundError(AppBaseError):
     def __init__(self):
         super().__init__("USER_NOT_FOUND", "Usuario no encontrado", 404)
 
 
-class InvalidTimezoneError(AppException):
+class InvalidTimezoneError(AppBaseError):
     def __init__(self, tz: str):
         super().__init__("INVALID_TIMEZONE", f"Timezone inválida: {tz}", 422)
 
 
-class InsufficientPermissionsError(AppException):
+class InsufficientPermissionsError(AppBaseError):
     def __init__(self):
         super().__init__(
             "INSUFFICIENT_PERMISSIONS",

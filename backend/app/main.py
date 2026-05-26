@@ -14,7 +14,7 @@ from slowapi.util import get_remote_address
 
 from app.api.v1.router import api_router
 from app.core.config import settings
-from app.core.exceptions import AppException
+from app.core.exceptions import AppBaseError
 from app.core.logging import configure_logging, get_logger
 
 configure_logging(debug=settings.DEBUG)
@@ -46,7 +46,7 @@ app = FastAPI(
 
 # ── Rate limiting ──────────────────────────────────────────────────────────────
 app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)  # type: ignore[arg-type]
 
 # ── CORS (R-0904) ──────────────────────────────────────────────────────────────
 app.add_middleware(
@@ -62,8 +62,8 @@ app.include_router(api_router)
 
 
 # ── Manejo global de errores (R-0804) ──────────────────────────────────────────
-@app.exception_handler(AppException)
-async def app_exception_handler(request: Request, exc: AppException) -> JSONResponse:
+@app.exception_handler(AppBaseError)
+async def app_exception_handler(request: Request, exc: AppBaseError) -> JSONResponse:
     logger.warning(
         "app_error", code=exc.code, message=exc.message, path=str(request.url)
     )
@@ -85,7 +85,7 @@ async def generic_exception_handler(request: Request, exc: Exception) -> JSONRes
 
 # ── Security headers (R-0904) ──────────────────────────────────────────────────
 @app.middleware("http")
-async def security_headers(request: Request, call_next):
+async def security_headers(request: Request, call_next):  # type: ignore[no-untyped-def]
     response = await call_next(request)
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"

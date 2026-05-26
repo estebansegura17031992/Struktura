@@ -21,11 +21,11 @@ class Settings(BaseSettings):
     APP_VERSION: str = "0.1.0"
 
     # Database
-    DATABASE_URL: str
-    DATABASE_URL_SYNC: str
+    DATABASE_URL: str = ""
+    DATABASE_URL_SYNC: str = ""
 
     # JWT
-    JWT_SECRET: str
+    JWT_SECRET: str = ""
     JWT_ALGORITHM: str = "HS256"
     JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
     JWT_REFRESH_TOKEN_EXPIRE_DAYS: int = 7

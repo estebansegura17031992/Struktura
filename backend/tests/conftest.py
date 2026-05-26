@@ -7,8 +7,7 @@ import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from alembic import command
 from alembic.config import Config
@@ -17,28 +16,16 @@ from app.core.config import settings
 from app.db import registry  # noqa: F401 — registra todos los modelos para Alembic
 from app.main import app
 
-# ─── Engine de tests ──────────────────────────────────────
+# ─── URL de tests ────────────────────────────────────────
 TEST_DATABASE_URL = (
     getattr(settings, "TEST_DATABASE_URL", None) or settings.DATABASE_URL
-)
-
-test_engine = create_async_engine(
-    TEST_DATABASE_URL,
-    echo=False,
-    future=True,
-)
-
-TestSessionLocal = sessionmaker(
-    bind=test_engine,
-    class_=AsyncSession,
-    expire_on_commit=False,
 )
 
 
 # ─── Helpers de migración ─────────────────────────────────
 
 
-def run_alembic_upgrade():
+def run_alembic_upgrade() -> None:
     """Aplica todas las migraciones incluyendo la creación de ENUMs."""
     alembic_cfg = Config("alembic.ini")
     command.upgrade(alembic_cfg, "head")
@@ -55,15 +42,18 @@ def event_loop():
     loop.close()
 
 
-@pytest_asyncio.fixture(scope="session", autouse=True)
-async def setup_database():
+@pytest_asyncio.fixture(scope="session")
+async def db_engine():
     """
-    Aplica migraciones de Alembic antes de todos los tests.
-    Alembic crea los ENUMs (user_role, etc.) antes de las tablas.
-    Al finalizar limpia el schema completo con CASCADE.
+    Engine creado DENTRO del fixture de sesión, garantizando que se usa
+    el mismo event loop que pytest-asyncio crea para la sesión.
+    Crear el engine a nivel de módulo es la causa del error
+    'Future attached to a different loop'.
     """
-    # Limpiar schema por si quedó algo de una ejecución anterior
-    async with test_engine.connect() as conn:
+    engine = create_async_engine(TEST_DATABASE_URL, echo=False, future=True)
+
+    # Limpiar schema antes de empezar
+    async with engine.connect() as conn:
         await conn.execute(text("DROP SCHEMA public CASCADE"))
         await conn.execute(text("CREATE SCHEMA public"))
         await conn.commit()
@@ -72,19 +62,26 @@ async def setup_database():
     loop = asyncio.get_event_loop()
     await loop.run_in_executor(None, run_alembic_upgrade)
 
-    yield
+    yield engine
 
-    # Limpiar al finalizar todos los tests
-    async with test_engine.connect() as conn:
+    # Limpiar al finalizar
+    async with engine.connect() as conn:
         await conn.execute(text("DROP SCHEMA public CASCADE"))
         await conn.execute(text("CREATE SCHEMA public"))
         await conn.commit()
 
+    await engine.dispose()
+
 
 @pytest_asyncio.fixture
-async def db_session() -> AsyncGenerator[AsyncSession, None]:
+async def db_session(db_engine) -> AsyncGenerator[AsyncSession, None]:
     """Sesión de DB con rollback automático después de cada test."""
-    async with TestSessionLocal() as session:
+    session_factory = async_sessionmaker(
+        bind=db_engine,
+        class_=AsyncSession,
+        expire_on_commit=False,
+    )
+    async with session_factory() as session:
         async with session.begin():
             yield session
             await session.rollback()
@@ -93,9 +90,7 @@ async def db_session() -> AsyncGenerator[AsyncSession, None]:
 @pytest_asyncio.fixture
 async def client(db_session: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
     """
-    Cliente HTTP de tests con DB override y emails mockeados.
-    Mockea send_verification_email y send_reset_password_email donde
-    el auth_service las importa, no en el módulo email_service.
+    Cliente HTTP con DB override y emails mockeados.
     """
 
     async def override_get_db():
@@ -127,10 +122,8 @@ async def client(db_session: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
 @pytest_asyncio.fixture
 async def client_no_db_override() -> AsyncGenerator[AsyncClient, None]:
     """
-    Cliente HTTP de tests SIN override de DB.
-    Usa la conexión real — para tests que verifican la DB directamente
-    (ej: /health que comprueba la conexión real a PostgreSQL).
-    Los emails siguen mockeados para no consumir cuota de Resend.
+    Cliente HTTP SIN override de DB — para tests que verifican la DB real
+    (ej: /health que hace SELECT 1 contra PostgreSQL).
     """
     with (
         patch(

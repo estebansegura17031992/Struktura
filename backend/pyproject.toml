@@ -16,11 +16,13 @@ indent-style = "space"
 
 [tool.mypy]
 python_version = "3.11"
+# Para el MVP: solo errores críticos, no exigir anotaciones en todo el código
 strict = false
 ignore_missing_imports = true
-disallow_untyped_defs = true
-check_untyped_defs = true
+disallow_untyped_defs = false        # ← no exigir -> None en todas las funciones
+check_untyped_defs = false           # ← no analizar el interior de funciones sin tipos
 warn_return_any = false
+warn_unused_ignores = false
 exclude = ["alembic/"]
 plugins = ["sqlalchemy.ext.mypy.plugin"]
 

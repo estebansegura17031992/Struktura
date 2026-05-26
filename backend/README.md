@@ -316,7 +316,7 @@ kanban-backend/
 │   │
 │   └── core/
 │       ├── security.py          # JWT encode/decode, bcrypt hash/verify
-│       ├── exceptions.py        # AppException base + exception handlers globales
+│       ├── exceptions.py        # AppBaseError base + exception handlers globales
 │       ├── logging.py           # Configuración de structlog
 │       ├── pagination.py        # Helper paginate(query, page, page_size)
 │       └── rate_limiter.py      # slowapi, límites por endpoint

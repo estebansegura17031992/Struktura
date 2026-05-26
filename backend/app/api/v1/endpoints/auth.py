@@ -12,7 +12,7 @@ from slowapi.util import get_remote_address
 
 from app.api.deps.auth import DB, CurrentUser, RefreshTokenCookie
 from app.core.config import settings
-from app.core.exceptions import AppException
+from app.core.exceptions import AppBaseError
 from app.schemas.auth import (
     ForgotPasswordRequest,
     LoginRequest,
@@ -165,7 +165,7 @@ async def reset_password(body: ResetPasswordRequest, db: DB):
     Revoca TODOS los refresh tokens del usuario (R-0105).
     """
     if len(body.new_password) < 8 or not any(c.isdigit() for c in body.new_password):
-        raise AppException(
+        raise AppBaseError(
             "INVALID_PASSWORD",
             "La contraseña debe tener al menos 8 caracteres y un número",
             422,

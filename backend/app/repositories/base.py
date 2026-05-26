@@ -1,9 +1,8 @@
 # app/repositories/base.py
-from typing import Any, Generic, TypeVar
-from typing import Protocol
+from typing import Any, Generic, Protocol, TypeVar
 
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 
 # ── Protocol que garantiza que el modelo tiene campo id ──
@@ -25,7 +24,7 @@ class BaseRepository(Generic[ModelType]):
             select(self.model).where(self.model.id == id)
         )
         return result.scalar_one_or_none()
-    
+
     async def create(self, **kwargs: Any) -> ModelType:
         obj = self.model(**kwargs)
         self.session.add(obj)

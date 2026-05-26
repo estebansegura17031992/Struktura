@@ -28,7 +28,7 @@ async def get_current_user(
 
     try:
         payload = decode_access_token(credentials.credentials)
-        user_id: str = payload.get("sub")
+        user_id: str | None = payload.get("user_id")
         if not user_id:
             raise TokenInvalidError()
     except JWTError:

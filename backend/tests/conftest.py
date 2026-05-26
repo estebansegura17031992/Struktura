@@ -91,12 +91,19 @@ async def db_engine():
 
     yield engine
 
-    async with engine.connect() as conn:
-        await conn.execute(text("DROP SCHEMA public CASCADE"))
-        await conn.execute(text("CREATE SCHEMA public"))
-        await conn.commit()
-
+    # Cerrar TODAS las conexiones del pool antes de DROP SCHEMA.
+    # Si hay conexiones abiertas, asyncpg lanza "another operation is in progress".
     await engine.dispose()
+
+    # Reconectar con un engine limpio para el cleanup final
+    cleanup_engine = create_async_engine(TEST_DATABASE_URL, echo=False, future=True)
+    try:
+        async with cleanup_engine.connect() as conn:
+            await conn.execute(text("DROP SCHEMA public CASCADE"))
+            await conn.execute(text("CREATE SCHEMA public"))
+            await conn.commit()
+    finally:
+        await cleanup_engine.dispose()
 
 
 # ─── Session factory de sesión ────────────────────────────

@@ -1,6 +1,6 @@
 # tests/conftest.py
 import asyncio
-from typing import AsyncGenerator
+from collections.abc import AsyncGenerator
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -33,6 +33,7 @@ TestSessionLocal = sessionmaker(
 
 
 # ─── Fixtures ─────────────────────────────────────────────
+
 
 @pytest.fixture(scope="session")
 def event_loop():
@@ -68,6 +69,7 @@ async def client(db_session: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
     Sobreescribe get_db para usar la sesión de tests con rollback.
     Mockea el servicio de email para que no se envíen emails reales en CI.
     """
+
     async def override_get_db():
         yield db_session
 
@@ -76,8 +78,10 @@ async def client(db_session: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
     # CRÍTICO: mockear el servicio de email en CI
     # Sin este mock, los tests de register y forgot-password intentan
     # llamar a la API de Resend y fallan por credenciales inválidas en CI.
-    with patch("app.services.email_service.send_email", new_callable=AsyncMock) as mock_email:
-        mock_email.return_value = True   # simula envío exitoso
+    with patch(
+        "app.services.email_service.send_email", new_callable=AsyncMock
+    ) as mock_email:
+        mock_email.return_value = True  # simula envío exitoso
         async with AsyncClient(
             transport=ASGITransport(app=app),
             base_url="http://test",
@@ -89,17 +93,21 @@ async def client(db_session: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
 
 # ─── Fixtures de datos de prueba ──────────────────────────
 
+
 @pytest_asyncio.fixture
 async def test_user(client: AsyncClient) -> dict:
     """Crea y verifica un usuario de prueba. Retorna { id, email, token }."""
     # Registrar
-    response = await client.post("/auth/register", json={
-        "email": "test@kanban.dev",
-        "username": "testuser",
-        "password": "Test1234!",
-        "full_name": "Test User",
-        "timezone": "America/Mexico_City",
-    })
+    response = await client.post(
+        "/auth/register",
+        json={
+            "email": "test@kanban.dev",
+            "username": "testuser",
+            "password": "Test1234!",
+            "full_name": "Test User",
+            "timezone": "America/Mexico_City",
+        },
+    )
     assert response.status_code == 201, response.json()
 
     user_id = response.json()["id"]
@@ -116,10 +124,13 @@ async def test_user(client: AsyncClient) -> dict:
 @pytest_asyncio.fixture
 async def auth_headers(client: AsyncClient, test_user: dict) -> dict:
     """Retorna los headers de Authorization para un usuario autenticado."""
-    response = await client.post("/auth/login", json={
-        "email": test_user["email"],
-        "password": "Test1234!",
-    })
+    response = await client.post(
+        "/auth/login",
+        json={
+            "email": test_user["email"],
+            "password": "Test1234!",
+        },
+    )
     assert response.status_code == 200, response.json()
     token = response.json()["access_token"]
     return {"Authorization": f"Bearer {token}"}

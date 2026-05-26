@@ -1,0 +1,146 @@
+# .github/workflows/ci.yml
+# Pipeline CI — Kanban MVP Backend
+# Ejecuta lint, type-check y tests en cada PR y push a staging/main.
+
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - staging
+  pull_request:
+    branches:
+      - main
+      - staging
+
+# Cancela ejecuciones anteriores del mismo PR para ahorrar minutos de Actions
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+
+  # ─────────────────────────────────────────────
+  # JOB 1: Lint y type-check
+  # Rápido (~60s). No necesita DB.
+  # ─────────────────────────────────────────────
+  lint-and-typecheck:
+    name: Lint & Type Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout del código
+        uses: actions/checkout@v4
+
+      - name: Configurar Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Instalar dependencias
+        run: |
+          pip install -r requirements.txt
+          pip install -r requirements-dev.txt
+
+      - name: Ruff — linting
+        run: ruff check app/ tests/
+
+      - name: Ruff — verificar formato
+        run: ruff format --check app/ tests/
+
+      - name: Mypy — type checking
+        run: mypy app/
+
+  # ─────────────────────────────────────────────
+  # JOB 2: Tests unitarios e integración
+  # Necesita PostgreSQL. Depende de lint-and-typecheck.
+  # ─────────────────────────────────────────────
+  test:
+    name: Tests (unit + integration)
+    runs-on: ubuntu-latest
+    needs: lint-and-typecheck   # No ejecuta si el lint falla
+
+    # PostgreSQL 15 como servicio efímero
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: kanban_ci
+          POSTGRES_PASSWORD: kanban_ci_pass
+          POSTGRES_DB: kanban_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    # Variables de entorno para los tests
+    # Los valores sensibles vienen de los Secrets configurados en GitHub
+    env:
+      ENVIRONMENT: test
+      ENABLE_DOCS: "false"
+      DATABASE_URL: postgresql+asyncpg://kanban_ci:kanban_ci_pass@localhost:5432/kanban_test
+      TEST_DATABASE_URL: postgresql+asyncpg://kanban_ci:kanban_ci_pass@localhost:5432/kanban_test
+      JWT_SECRET: ${{ secrets.CI_JWT_SECRET }}
+      ACCESS_TOKEN_EXPIRE_MINUTES: "15"
+      REFRESH_TOKEN_EXPIRE_DAYS: "7"
+      RESEND_API_KEY: ${{ secrets.CI_RESEND_API_KEY }}
+      EMAIL_FROM: ci@kanban-test.local
+      CORS_ORIGINS: http://localhost:5173
+      RATE_LIMIT_ENABLED: "false"
+
+    steps:
+      - name: Checkout del código
+        uses: actions/checkout@v4
+
+      - name: Configurar Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Instalar dependencias
+        run: |
+          pip install -r requirements.txt
+          pip install -r requirements-dev.txt
+
+      - name: Esperar a que PostgreSQL esté listo
+        run: |
+          until pg_isready -h localhost -p 5432 -U kanban_ci; do
+            echo "Esperando PostgreSQL..."
+            sleep 2
+          done
+          echo "PostgreSQL listo"
+
+      - name: Aplicar migraciones Alembic
+        run: alembic upgrade head
+
+      - name: Tests unitarios
+        run: |
+          pytest tests/unit/ \
+            --tb=short \
+            --quiet \
+            -v
+
+      - name: Tests de integración
+        run: |
+          pytest tests/integration/ \
+            --tb=short \
+            --quiet \
+            -v \
+            --cov=app \
+            --cov-report=term-missing \
+            --cov-report=xml:coverage.xml \
+            --cov-fail-under=70
+
+      - name: Publicar reporte de cobertura
+        uses: codecov/codecov-action@v4
+        if: always()   # Publicar aunque los tests fallen, para ver la cobertura
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: ./coverage.xml
+          fail_ci_if_error: false   # No fallar el CI si Codecov no está disponible

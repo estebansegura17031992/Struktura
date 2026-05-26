@@ -11,6 +11,7 @@ from fastapi.responses import JSONResponse
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
+from starlette.types import ASGIApp, Receive, Scope, Send
 
 from app.api.v1.router import api_router
 from app.core.config import settings
@@ -21,6 +22,35 @@ configure_logging(debug=settings.DEBUG)
 logger = get_logger(__name__)
 
 limiter = Limiter(key_func=get_remote_address, enabled=settings.RATE_LIMIT_ENABLED)
+
+
+# ── Security headers — Pure ASGI middleware ────────────────────────────────────
+# BaseHTTPMiddleware es incompatible con pytest-asyncio scope=session.
+# Este middleware puro no crea tasks adicionales y evita el error:
+# "Task got Future attached to a different loop"
+class SecurityHeadersMiddleware:
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        async def send_with_headers(message: dict) -> None:
+            if message["type"] == "http.response.start":
+                raw_headers: list = list(message.get("headers", []))
+                raw_headers.extend(
+                    [
+                        (b"x-content-type-options", b"nosniff"),
+                        (b"x-frame-options", b"DENY"),
+                        (b"referrer-policy", b"strict-origin"),
+                    ]
+                )
+                message["headers"] = raw_headers
+            await send(message)
+
+        await self.app(scope, receive, send_with_headers)
 
 
 @asynccontextmanager
@@ -57,6 +87,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# ── Security headers (R-0904) ──────────────────────────────────────────────────
+app.add_middleware(SecurityHeadersMiddleware)
+
 # ── Routers ────────────────────────────────────────────────────────────────────
 app.include_router(api_router)
 
@@ -81,13 +114,3 @@ async def generic_exception_handler(request: Request, exc: Exception) -> JSONRes
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         content={"error": {"code": "INTERNAL_SERVER_ERROR", "message": message}},
     )
-
-
-# ── Security headers (R-0904) ──────────────────────────────────────────────────
-@app.middleware("http")
-async def security_headers(request: Request, call_next):  # type: ignore[no-untyped-def]
-    response = await call_next(request)
-    response.headers["X-Content-Type-Options"] = "nosniff"
-    response.headers["X-Frame-Options"] = "DENY"
-    response.headers["Referrer-Policy"] = "strict-origin"
-    return response

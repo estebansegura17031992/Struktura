@@ -9,15 +9,15 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
 
-from app.config import settings
-from app.database import Base
-from app.dependencies import get_db
+from app.core.config import settings  # era: app.config
+from app.db.base import Base  # era: app.database
+from app.api.deps.db import get_db  # era: app.dependencies
 from app.main import app
 
 # ─── Engine de tests ──────────────────────────────────────
 # Usa TEST_DATABASE_URL si existe; si no, usa DATABASE_URL
 # En CI ambas apuntan a kanban_test (la DB efímera del servicio)
-TEST_DATABASE_URL = settings.TEST_DATABASE_URL or settings.DATABASE_URL
+TEST_DATABASE_URL = getattr(settings, "TEST_DATABASE_URL", None) or settings.DATABASE_URL
 
 test_engine = create_async_engine(
     TEST_DATABASE_URL,
@@ -97,7 +97,6 @@ async def client(db_session: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
 @pytest_asyncio.fixture
 async def test_user(client: AsyncClient) -> dict:
     """Crea y verifica un usuario de prueba. Retorna { id, email, token }."""
-    # Registrar
     response = await client.post(
         "/auth/register",
         json={
@@ -112,12 +111,6 @@ async def test_user(client: AsyncClient) -> dict:
 
     user_id = response.json()["id"]
 
-    # En tests, verificar el email directamente en DB
-    # (el código de verificación lo obtenemos del mock o de la DB)
-    # Esta fixture asume que el conftest mockea el email y que
-    # hay un endpoint de desarrollo /auth/verify-email-dev o
-    # que los tests de integración de auth prueban el flujo completo.
-    # Adaptar según la implementación real del proyecto.
     return {"id": user_id, "email": "test@kanban.dev"}
 
 

@@ -3,7 +3,9 @@ Kanban MVP — FastAPI application entry point.
 Sprint 1: health check, CORS, manejo global de errores, rate limiting, logging.
 """
 
+from collections.abc import MutableMapping
 from contextlib import asynccontextmanager
+from typing import Any
 
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -25,9 +27,6 @@ limiter = Limiter(key_func=get_remote_address, enabled=settings.RATE_LIMIT_ENABL
 
 
 # ── Security headers — Pure ASGI middleware ────────────────────────────────────
-# BaseHTTPMiddleware es incompatible con pytest-asyncio scope=session.
-# Este middleware puro no crea tasks adicionales y evita el error:
-# "Task got Future attached to a different loop"
 class SecurityHeadersMiddleware:
     def __init__(self, app: ASGIApp) -> None:
         self.app = app
@@ -37,7 +36,7 @@ class SecurityHeadersMiddleware:
             await self.app(scope, receive, send)
             return
 
-        async def send_with_headers(message: dict) -> None:
+        async def send_with_headers(message: MutableMapping[str, Any]) -> None:
             if message["type"] == "http.response.start":
                 raw_headers: list = list(message.get("headers", []))
                 raw_headers.extend(

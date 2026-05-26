@@ -16,7 +16,9 @@ from app.db.base import Base
 from app.main import app
 
 # ─── Engine de tests ──────────────────────────────────────
-TEST_DATABASE_URL = getattr(settings, "TEST_DATABASE_URL", None) or settings.DATABASE_URL
+TEST_DATABASE_URL = (
+    getattr(settings, "TEST_DATABASE_URL", None) or settings.DATABASE_URL
+)
 
 test_engine = create_async_engine(
     TEST_DATABASE_URL,

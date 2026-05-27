@@ -34,18 +34,6 @@ TEST_DATABASE_URL = (
     getattr(settings, "TEST_DATABASE_URL", None) or settings.DATABASE_URL
 )
 
-_TRUNCATE_TABLES = [
-    "audit_logs",
-    "password_reset_tokens",
-    "email_verification_tokens",
-    "refresh_tokens",
-    "task_assignees",
-    "tasks",
-    "columns",
-    "projects",
-    "users",
-]
-
 
 # ─── Migraciones: una sola vez por sesión (SÍNCRONO, sin event loop) ──────
 
@@ -118,19 +106,25 @@ async def session_factory(db_engine):
 @pytest_asyncio.fixture(autouse=True)
 async def clean_tables(db_engine):
     """
-    Trunca todas las tablas ANTES de cada test para garantizar estado limpio.
-    Truncar antes (no después) es más robusto: no depende del orden de teardown
-    ni de que el test anterior haya terminado de cerrar conexiones.
+    Trunca TODAS las tablas reales del schema antes de cada test.
+    Descubre las tablas dinámicamente (sin lista hardcoded) para no fallar
+    silenciosamente si un nombre no coincide. Excluye alembic_version.
     """
     async with db_engine.connect() as conn:
-        tables = ", ".join(_TRUNCATE_TABLES)
-        try:
+        result = await conn.execute(
+            text(
+                "SELECT tablename FROM pg_tables "
+                "WHERE schemaname = 'public' "
+                "AND tablename != 'alembic_version'"
+            )
+        )
+        tables = [row[0] for row in result.fetchall()]
+        if tables:
+            quoted = ", ".join(f'"{t}"' for t in tables)
             await conn.execute(
-                text(f"TRUNCATE TABLE {tables} RESTART IDENTITY CASCADE")
+                text(f"TRUNCATE TABLE {quoted} RESTART IDENTITY CASCADE")
             )
             await conn.commit()
-        except Exception:
-            await conn.rollback()
     yield
 
 

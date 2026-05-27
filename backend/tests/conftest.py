@@ -117,8 +117,11 @@ async def session_factory(db_engine):
 
 @pytest_asyncio.fixture(autouse=True)
 async def clean_tables(db_engine):
-    """Trunca todas las tablas DESPUÉS de cada test."""
-    yield
+    """
+    Trunca todas las tablas ANTES de cada test para garantizar estado limpio.
+    Truncar antes (no después) es más robusto: no depende del orden de teardown
+    ni de que el test anterior haya terminado de cerrar conexiones.
+    """
     async with db_engine.connect() as conn:
         tables = ", ".join(_TRUNCATE_TABLES)
         try:
@@ -128,6 +131,7 @@ async def clean_tables(db_engine):
             await conn.commit()
         except Exception:
             await conn.rollback()
+    yield
 
 
 # ─── Sesión por test ──────────────────────────────────────────────────────

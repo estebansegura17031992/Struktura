@@ -1,34 +1,39 @@
 # tests/conftest.py
 """
-pytest-asyncio >= 0.24 introduce loop_scope para fixtures de sesión.
-Con asyncio_default_fixture_loop_scope = "session" en pyproject.toml,
-todos los fixtures async comparten el mismo event loop — resuelve el
-error "Future attached to a different loop" de la versión 0.23.
+Estrategia robusta contra el bug de event loop de pytest-asyncio + asyncpg:
 
-Ya no se necesita el fixture event_loop custom ni scope tricks.
+PROBLEMA: con asyncio_mode="auto", cada TEST corre en un event loop de scope
+'function', pero un engine de scope 'session' crea sus conexiones asyncpg en
+el loop de la fixture de sesión. Son loops distintos → "Future attached to a
+different loop".
+
+SOLUCIÓN: el engine se crea POR TEST (scope function) con NullPool, de modo
+que cada conexión asyncpg nace y muere en el MISMO loop que el test.
+Las migraciones se aplican UNA vez a nivel de sesión vía un engine síncrono
+(psycopg2), que no tiene problemas de loop.
 """
 
-import asyncio
 from collections.abc import AsyncGenerator
 from unittest.mock import AsyncMock, patch
 
+import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.pool import NullPool
 
 from alembic import command
 from alembic.config import Config
 from app.api.deps.db import get_db
 from app.core.config import settings
-from app.db import registry  # noqa: F401 — registra todos los modelos para Alembic
+from app.db import registry  # noqa: F401 — registra modelos para Alembic
 from app.main import app
 
 TEST_DATABASE_URL = (
     getattr(settings, "TEST_DATABASE_URL", None) or settings.DATABASE_URL
 )
 
-# Tablas en orden que respeta FK — se truncan entre tests
 _TRUNCATE_TABLES = [
     "audit_logs",
     "password_reset_tokens",
@@ -42,55 +47,62 @@ _TRUNCATE_TABLES = [
 ]
 
 
-def _run_alembic_upgrade() -> None:
+# ─── Migraciones: una sola vez por sesión (SÍNCRONO, sin event loop) ──────
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _apply_migrations():
+    """
+    Aplica migraciones Alembic una vez al inicio de la sesión usando
+    psycopg2 (síncrono). No toca asyncio, así que no hay conflicto de loop.
+    """
     alembic_cfg = Config("alembic.ini")
+
+    # Reset schema limpio antes de migrar (vía psycopg2 síncrono)
+    from sqlalchemy import create_engine
+
+    sync_url = settings.DATABASE_URL_SYNC
+    sync_engine = create_engine(sync_url)
+    with sync_engine.connect() as conn:
+        conn.execute(text("DROP SCHEMA public CASCADE"))
+        conn.execute(text("CREATE SCHEMA public"))
+        conn.commit()
+    sync_engine.dispose()
+
     command.upgrade(alembic_cfg, "head")
 
+    yield
 
-# ─── Engine y migraciones — scope session ────────────────
+    # Cleanup final
+    sync_engine = create_engine(sync_url)
+    with sync_engine.connect() as conn:
+        conn.execute(text("DROP SCHEMA public CASCADE"))
+        conn.execute(text("CREATE SCHEMA public"))
+        conn.commit()
+    sync_engine.dispose()
 
 
-@pytest_asyncio.fixture(scope="session")
+# ─── Engine POR TEST con NullPool ─────────────────────────────────────────
+
+
+@pytest_asyncio.fixture
 async def db_engine():
     """
-    Engine creado una sola vez para toda la sesión.
-    Con pytest-asyncio 0.24 + asyncio_default_fixture_loop_scope="session"
-    este fixture comparte el mismo loop que todos los tests.
+    Engine nuevo para CADA test, con NullPool: cada conexión asyncpg se abre
+    y cierra dentro del mismo event loop del test. Sin conexiones persistentes
+    entre loops → sin "different loop" ni "operation in progress".
     """
     engine = create_async_engine(
         TEST_DATABASE_URL,
         echo=False,
         future=True,
-        pool_size=5,
-        max_overflow=0,
+        poolclass=NullPool,  # CLAVE: sin pool, conexión fresca por uso
     )
-
-    # Reset schema limpio
-    async with engine.connect() as conn:
-        await conn.execute(text("DROP SCHEMA public CASCADE"))
-        await conn.execute(text("CREATE SCHEMA public"))
-        await conn.commit()
-
-    # Alembic es síncrono — corre en executor
-    loop = asyncio.get_event_loop()
-    await loop.run_in_executor(None, _run_alembic_upgrade)
-
     yield engine
-
-    # Teardown: cerrar todas las conexiones del pool antes de DROP
     await engine.dispose()
 
-    cleanup_engine = create_async_engine(TEST_DATABASE_URL, echo=False, future=True)
-    try:
-        async with cleanup_engine.connect() as conn:
-            await conn.execute(text("DROP SCHEMA public CASCADE"))
-            await conn.execute(text("CREATE SCHEMA public"))
-            await conn.commit()
-    finally:
-        await cleanup_engine.dispose()
 
-
-@pytest_asyncio.fixture(scope="session")
+@pytest_asyncio.fixture
 async def session_factory(db_engine):
     return async_sessionmaker(
         bind=db_engine,
@@ -100,7 +112,7 @@ async def session_factory(db_engine):
     )
 
 
-# ─── Limpieza entre tests ─────────────────────────────────
+# ─── Limpieza entre tests ─────────────────────────────────────────────────
 
 
 @pytest_asyncio.fixture(autouse=True)
@@ -118,17 +130,16 @@ async def clean_tables(db_engine):
             await conn.rollback()
 
 
-# ─── Sesión por test ──────────────────────────────────────
+# ─── Sesión por test ──────────────────────────────────────────────────────
 
 
 @pytest_asyncio.fixture
 async def db_session(session_factory) -> AsyncGenerator[AsyncSession, None]:
-    """Sesión fresca por test — sin rollback (lo maneja clean_tables)."""
     async with session_factory() as session:
         yield session
 
 
-# ─── Clientes HTTP ────────────────────────────────────────
+# ─── Clientes HTTP ────────────────────────────────────────────────────────
 
 
 @pytest_asyncio.fixture
@@ -161,7 +172,6 @@ async def client(db_session: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
 
 @pytest_asyncio.fixture
 async def client_no_db_override() -> AsyncGenerator[AsyncClient, None]:
-    """Para tests de /health que usan la DB real."""
     with (
         patch(
             "app.services.auth_service.send_verification_email",
@@ -181,7 +191,7 @@ async def client_no_db_override() -> AsyncGenerator[AsyncClient, None]:
             yield ac
 
 
-# ─── Datos de prueba ──────────────────────────────────────
+# ─── Datos de prueba ──────────────────────────────────────────────────────
 
 
 @pytest_asyncio.fixture

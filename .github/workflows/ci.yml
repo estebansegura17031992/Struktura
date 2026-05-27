@@ -106,6 +106,13 @@ jobs:
           pip install --no-cache-dir -r requirements.txt
           pip install --no-cache-dir -r requirements-dev.txt
           pip install --no-cache-dir psycopg2-binary
+          # Forzar pytest-asyncio 0.24.0 al final — sobrescribe cualquier
+          # versión 0.23.x que arrastren requirements.txt o requirements-dev.txt
+          pip install --no-cache-dir --force-reinstall "pytest-asyncio==0.24.0"
+
+      - name: Verificar versión de pytest-asyncio
+        run: |
+          python -c "import importlib.metadata as m; v = m.version('pytest-asyncio'); print('pytest-asyncio:', v); assert v == '0.24.0', f'Version incorrecta: {v}'"
 
       - name: Esperar a que PostgreSQL esté listo
         run: |

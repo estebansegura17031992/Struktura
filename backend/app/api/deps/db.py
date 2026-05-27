@@ -1,18 +1,19 @@
 """Dependency — sesión de base de datos por request."""
-from typing import AsyncGenerator
- 
+
+from collections.abc import AsyncGenerator
+
 from sqlalchemy.ext.asyncio import AsyncSession
- 
-from app.db.session import AsyncSessionLocal
- 
- 
+
+from app.db.session import get_session_factory
+
+
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
     """
-    Inyecta una sesión AsyncSession por request.
-    La sesión se cierra automáticamente al finalizar el request,
-    incluso si ocurre una excepción.
+    Inyecta una AsyncSession por request.
+    Usa get_session_factory() lazy para evitar fallos en import time.
     """
-    async with AsyncSessionLocal() as session:
+    factory = get_session_factory()
+    async with factory() as session:
         try:
             yield session
         except Exception:

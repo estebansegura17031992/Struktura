@@ -8,8 +8,6 @@ Esta migracion es un marcador formal del Sprint 2 en el historial
 de Alembic. No ejecuta DDL adicional.
 """
 
-from alembic import op
-
 revision: str = "0002"
 down_revision: str | None = "0001"
 branch_labels = None

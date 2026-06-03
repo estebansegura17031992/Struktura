@@ -3,13 +3,12 @@ ProjectRepository — queries de DB para proyectos y membresías.
 Sin lógica de negocio — solo acceso a datos.
 Sprint 2 · E03 · R-0301 a R-0307
 """
+
 import uuid
-from datetime import datetime, timezone
 
 from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.base import Base
 from app.models.project import Project, ProjectMember
 from app.repositories.base import BaseRepository
 
@@ -83,14 +82,17 @@ class ProjectRepository(BaseRepository[Project]):
         """
         try:
             from app.models.task import Task  # noqa: PLC0415
+
             result = await self.session.execute(
-                select(Task.title).where(
+                select(Task.title)
+                .where(
                     and_(
                         Task.project_id == project_id,
                         Task.status != "completo",
                         Task.deleted_at.is_(None),
                     )
-                ).limit(limit)
+                )
+                .limit(limit)
             )
             return list(result.scalars().all())
         except ImportError:
@@ -117,9 +119,7 @@ class ProjectRepository(BaseRepository[Project]):
         )
         return result.scalar_one_or_none()
 
-    async def list_active_members(
-        self, project_id: uuid.UUID
-    ) -> list[ProjectMember]:
+    async def list_active_members(self, project_id: uuid.UUID) -> list[ProjectMember]:
         result = await self.session.execute(
             select(ProjectMember)
             .where(
@@ -151,9 +151,7 @@ class ProjectRepository(BaseRepository[Project]):
         )
         return list(result.scalars().all()), total
 
-    async def get_owner_membership(
-        self, project_id: uuid.UUID
-    ) -> ProjectMember | None:
+    async def get_owner_membership(self, project_id: uuid.UUID) -> ProjectMember | None:
         result = await self.session.execute(
             select(ProjectMember).where(
                 ProjectMember.project_id == project_id,

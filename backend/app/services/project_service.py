@@ -3,13 +3,18 @@ ProjectService — lógica de negocio de proyectos y membresía.
 Orquesta ProjectRepository y audit_service.
 Sprint 2 · E03 · R-0301 a R-0307
 """
+
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import AppBaseError, InsufficientPermissionsError, UserNotFoundError
+from app.core.exceptions import (
+    AppBaseError,
+    InsufficientPermissionsError,
+    UserNotFoundError,
+)
 from app.core.logging import get_logger
 from app.models.project import Project, ProjectMember
 from app.models.user import User
@@ -23,7 +28,6 @@ DEFAULT_MAX_PROJECTS = 20
 
 
 class ProjectService:
-
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
         self.repo = ProjectRepository(session)
@@ -33,6 +37,7 @@ class ProjectService:
         """Lee límite desde system_settings. Fallback: DEFAULT_MAX_PROJECTS."""
         try:
             from app.models.auth import SystemSetting  # noqa: PLC0415
+
             result = await self.session.execute(
                 select(SystemSetting).where(
                     SystemSetting.key == "max_projects_per_user"
@@ -88,12 +93,12 @@ class ProjectService:
         await self.session.commit()
         await self.session.refresh(project)
 
-        logger.info("project_created", project_id=str(project.id), owner=str(current_user.id))
+        logger.info(
+            "project_created", project_id=str(project.id), owner=str(current_user.id)
+        )
         return project
 
-    async def soft_delete(
-        self, project_id: uuid.UUID, current_user: User
-    ) -> None:
+    async def soft_delete(self, project_id: uuid.UUID, current_user: User) -> None:
         """
         Soft delete con validación de tareas activas.
         Rechaza con 409 y lista hasta 10 tareas bloqueantes.
@@ -115,7 +120,7 @@ class ProjectService:
         await self.session.execute(
             update(Project)
             .where(Project.id == project_id)
-            .values(deleted_at=datetime.now(timezone.utc))
+            .values(deleted_at=datetime.now(UTC))
         )
 
         await log_action(
@@ -127,7 +132,9 @@ class ProjectService:
             metadata={"project_name": project.name},
         )
         await self.session.commit()
-        logger.info("project_deleted", project_id=str(project_id), actor=str(current_user.id))
+        logger.info(
+            "project_deleted", project_id=str(project_id), actor=str(current_user.id)
+        )
 
     # ── Membresía ─────────────────────────────────────────────────────────────
 
@@ -148,7 +155,11 @@ class ProjectService:
             raise InsufficientPermissionsError()
 
         # Prevenir escalada: editor no puede asignar owner
-        if membership.role == "editor" and role == "owner" and current_user.role != "admin":
+        if (
+            membership.role == "editor"
+            and role == "owner"
+            and current_user.role != "admin"
+        ):
             raise AppBaseError(
                 "FORBIDDEN",
                 "Solo el owner o un admin puede asignar el rol de owner.",
@@ -200,7 +211,9 @@ class ProjectService:
         if membership.role == "viewer":
             raise InsufficientPermissionsError()
 
-        target_membership = await self.repo.get_active_membership(project_id, target_user_id)
+        target_membership = await self.repo.get_active_membership(
+            project_id, target_user_id
+        )
         if not target_membership:
             raise AppBaseError("NOT_FOUND", "El usuario no es miembro activo.", 404)
 
@@ -218,7 +231,7 @@ class ProjectService:
                 ProjectMember.user_id == target_user_id,
                 ProjectMember.removed_at.is_(None),
             )
-            .values(removed_at=datetime.now(timezone.utc))
+            .values(removed_at=datetime.now(UTC))
         )
         await self.session.commit()
 
@@ -245,7 +258,9 @@ class ProjectService:
                 409,
             )
 
-        new_owner_membership = await self.repo.get_active_membership(project_id, new_owner_id)
+        new_owner_membership = await self.repo.get_active_membership(
+            project_id, new_owner_id
+        )
         if not new_owner_membership:
             raise AppBaseError(
                 "NOT_FOUND",

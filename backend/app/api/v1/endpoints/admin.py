@@ -7,6 +7,7 @@ PATCH /api/v1/admin/users/{user_id}/role — cambio de rol con validación últi
 Usa AdminUser (require_role("admin")) de app/api/deps/auth.py.
 Usa log_action de app/services/audit_service.py.
 """
+
 import math
 from uuid import UUID
 
@@ -28,6 +29,7 @@ logger = get_logger(__name__)
 
 # ── Schemas inline ────────────────────────────────────────────────────────────
 
+
 class ChangeRoleRequest(BaseModel):
     role: str
 
@@ -40,6 +42,7 @@ class ChangeRoleRequest(BaseModel):
 
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
+
 
 @router.get("/users", response_model=PaginatedResponse[UserResponse])
 async def list_users(
@@ -124,9 +127,7 @@ async def change_user_role(
 
     old_role = target.role
 
-    await db.execute(
-        update(User).where(User.id == user_id).values(role=body.role)
-    )
+    await db.execute(update(User).where(User.id == user_id).values(role=body.role))
     await db.flush()
 
     await log_action(

@@ -15,24 +15,27 @@ Endpoints:
   GET    /projects/{project_id}/members/history — historial de membresías
   POST   /projects/{project_id}/transfer-ownership — transferir ownership
 """
+
 import math
+from datetime import UTC
 from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field, field_validator
-from sqlalchemy import and_, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps.auth import DB, CurrentUser, get_current_user
 from app.api.deps.db import get_db
-from app.core.exceptions import AppBaseError, InsufficientPermissionsError, UserNotFoundError
+from app.core.exceptions import (
+    AppBaseError,
+    InsufficientPermissionsError,
+)
 from app.core.logging import get_logger
 from app.models.project import Project, ProjectMember
 from app.models.user import User
 from app.repositories.project_repository import ProjectRepository
 from app.schemas.common import MessageResponse, PaginatedResponse
-from app.services.audit_service import log_action
 from app.services.project_service import ProjectService
 
 router = APIRouter(prefix="/projects", tags=["projects"])
@@ -40,6 +43,7 @@ logger = get_logger(__name__)
 
 
 # ── Schemas inline ────────────────────────────────────────────────────────────
+
 
 class ProjectCreateRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=100)
@@ -120,6 +124,7 @@ class MemberResponse(BaseModel):
 
 # ── Dependency: obtener membresía activa del usuario en el proyecto ───────────
 
+
 async def get_project_member(
     project_id: UUID,
     current_user: Annotated[User, Depends(get_current_user)],
@@ -167,6 +172,7 @@ ProjectMembership = Annotated[ProjectMember, Depends(get_project_member)]
 
 
 # ── CRUD proyectos ────────────────────────────────────────────────────────────
+
 
 @router.post("", response_model=ProjectResponse, status_code=201)
 async def create_project(
@@ -232,9 +238,11 @@ async def update_project(
         updates["description"] = body.description
 
     if updates:
+        from datetime import datetime  # noqa: PLC0415
+
         from sqlalchemy import update as sa_update  # noqa: PLC0415
-        from datetime import datetime, timezone  # noqa: PLC0415
-        updates["updated_at"] = datetime.now(timezone.utc)
+
+        updates["updated_at"] = datetime.now(UTC)
         await db.execute(
             sa_update(Project).where(Project.id == project_id).values(**updates)
         )
@@ -266,6 +274,7 @@ async def delete_project(
 
 
 # ── Gestión de miembros ───────────────────────────────────────────────────────
+
 
 @router.get("/{project_id}/members", response_model=list[MemberResponse])
 async def list_members(
@@ -315,8 +324,9 @@ async def remove_member(
     await service.remove_member(project_id, user_id, current_user, membership)
 
 
-@router.get("/{project_id}/members/history",
-            response_model=PaginatedResponse[MemberResponse])
+@router.get(
+    "/{project_id}/members/history", response_model=PaginatedResponse[MemberResponse]
+)
 async def member_history(
     project_id: UUID,
     current_user: CurrentUser,

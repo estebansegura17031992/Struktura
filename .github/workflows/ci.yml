@@ -99,7 +99,7 @@ jobs:
         with:
           python-version: "3.11"
           # Sin cache de pip — garantiza que se instala la versión exacta
-          # del requirements.txt en cada run sin usar versiones cacheadas.
+          # del requirements.txt en cada run sin usar versiones cacheadas
 
       - name: Instalar dependencias
         run: |

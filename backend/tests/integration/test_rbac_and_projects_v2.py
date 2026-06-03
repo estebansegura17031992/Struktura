@@ -112,13 +112,19 @@ async def test_admin_accede_a_lista_usuarios(client, db_session):
 
 @pytest.mark.asyncio
 async def test_editor_no_puede_listar_usuarios(client):
-    """Editor recibe 403 — no 401 — en endpoint de admin."""
-    user = await _register_and_verify(client, "editor1@test.dev", "editor1")
-    headers = await _headers(client, user["email"])
+    """Editor recibe 403 — no 401 — en endpoint de admin.
+    Nota: el primer usuario registrado es admin (AG-01), el segundo es editor.
+    """
+    # Primer usuario → admin (AG-01, DB vacía por clean_tables)
+    await _register_and_verify(client, "admin_ag01@test.dev", "admin_ag01")
+    # Segundo usuario → editor (rol por defecto)
+    editor = await _register_and_verify(client, "editor1@test.dev", "editor1")
+    headers = await _headers(client, editor["email"])
 
     resp = await client.get("/api/v1/admin/users", headers=headers)
     assert resp.status_code == 403, "Editor no puede acceder a admin/users"
-    assert resp.json()["error"]["code"] == "FORBIDDEN"
+    assert resp.json()["error"]["code"] == "INSUFFICIENT_PERMISSIONS"
+
 
 
 @pytest.mark.asyncio
@@ -561,6 +567,7 @@ async def test_transferir_ownership_exitoso(client, db_session):
     assert resp.status_code == 200, f"transferencia falló: {resp.text}"
 
     # Verificar en DB que el nuevo owner tiene rol owner
+    db_session.expire_all()  # forzar recarga desde DB
     result = await db_session.execute(
         select(ProjectMember).where(
             ProjectMember.project_id == UUID(project["id"]),
@@ -570,6 +577,8 @@ async def test_transferir_ownership_exitoso(client, db_session):
     )
     pm = result.scalar_one_or_none()
     assert pm is not None and pm.role == "owner", "Nuevo owner debe tener rol owner"
+
+
 
 
 @pytest.mark.asyncio
@@ -594,6 +603,7 @@ async def test_owner_anterior_queda_como_editor(client, db_session):
         headers=owner_h,
     )
 
+    db_session.expire_all()
     result = await db_session.execute(
         select(ProjectMember).where(
             ProjectMember.project_id == UUID(project["id"]),
@@ -603,6 +613,8 @@ async def test_owner_anterior_queda_como_editor(client, db_session):
     )
     pm = result.scalar_one_or_none()
     assert pm is not None and pm.role == "editor", "Owner anterior debe quedar como editor"
+
+
 
 
 @pytest.mark.asyncio

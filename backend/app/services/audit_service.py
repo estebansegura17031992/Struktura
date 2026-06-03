@@ -2,17 +2,17 @@
 Servicio de auditoría — escritura asíncrona sin bloquear el response (R-0801).
 Nunca incluir datos sensibles en metadata.
 """
-import asyncio
+
 from uuid import UUID
- 
+
 from sqlalchemy.ext.asyncio import AsyncSession
- 
+
 from app.core.logging import get_logger
 from app.models.audit import AuditLog
- 
+
 logger = get_logger(__name__)
- 
- 
+
+
 async def log_action(
     session: AsyncSession,
     action: str,
@@ -32,7 +32,7 @@ async def log_action(
             action=action,
             entity_type=entity_type,
             entity_id=entity_id,
-            extra_data=metadata,        # columna "metadata" en DB, atributo extra_data en ORM
+            extra_data=metadata,  # columna "metadata" en DB, atributo extra_data en ORM
             ip_address=ip_address,
         )
         session.add(entry)

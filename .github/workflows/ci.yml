@@ -1,7 +1,4 @@
 # .github/workflows/ci.yml
-# Pipeline CI — Kanban MVP Backend
-# Ejecuta lint, type-check y tests en cada PR y push a staging/main.
-
 name: CI
 
 on:
@@ -14,20 +11,18 @@ on:
       - main
       - staging
 
-# Cancela ejecuciones anteriores del mismo PR para ahorrar minutos de Actions
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
 
-  # ─────────────────────────────────────────────
-  # JOB 1: Lint y type-check
-  # Rápido (~60s). No necesita DB.
-  # ─────────────────────────────────────────────
   lint-and-typecheck:
     name: Lint & Type Check
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
 
     steps:
       - name: Checkout del código
@@ -38,11 +33,12 @@ jobs:
         with:
           python-version: "3.11"
           cache: "pip"
+          cache-dependency-path: backend/requirements*.txt
 
       - name: Instalar dependencias
         run: |
-          pip install -r requirements.txt
-          pip install -r requirements-dev.txt
+          pip install --no-cache-dir -r requirements.txt
+          pip install --no-cache-dir -r requirements-dev.txt
 
       - name: Ruff — linting
         run: ruff check app/ tests/
@@ -53,16 +49,14 @@ jobs:
       - name: Mypy — type checking
         run: mypy app/
 
-  # ─────────────────────────────────────────────
-  # JOB 2: Tests unitarios e integración
-  # Necesita PostgreSQL. Depende de lint-and-typecheck.
-  # ─────────────────────────────────────────────
   test:
     name: Tests (unit + integration)
     runs-on: ubuntu-latest
-    needs: lint-and-typecheck   # No ejecuta si el lint falla
+    needs: lint-and-typecheck
+    defaults:
+      run:
+        working-directory: backend
 
-    # PostgreSQL 15 como servicio efímero
     services:
       postgres:
         image: postgres:15-alpine
@@ -78,20 +72,23 @@ jobs:
           --health-timeout 5s
           --health-retries 10
 
-    # Variables de entorno para los tests
-    # Los valores sensibles vienen de los Secrets configurados en GitHub
     env:
-      ENVIRONMENT: test
+      ENVIRONMENT: development
+      DEBUG: "true"
       ENABLE_DOCS: "false"
       DATABASE_URL: postgresql+asyncpg://kanban_ci:kanban_ci_pass@localhost:5432/kanban_test
+      DATABASE_URL_SYNC: postgresql+psycopg2://kanban_ci:kanban_ci_pass@localhost:5432/kanban_test
       TEST_DATABASE_URL: postgresql+asyncpg://kanban_ci:kanban_ci_pass@localhost:5432/kanban_test
       JWT_SECRET: ${{ secrets.CI_JWT_SECRET }}
-      ACCESS_TOKEN_EXPIRE_MINUTES: "15"
-      REFRESH_TOKEN_EXPIRE_DAYS: "7"
+      JWT_ALGORITHM: HS256
+      JWT_ACCESS_TOKEN_EXPIRE_MINUTES: "15"
+      JWT_REFRESH_TOKEN_EXPIRE_DAYS: "7"
       RESEND_API_KEY: ${{ secrets.CI_RESEND_API_KEY }}
-      EMAIL_FROM: ci@kanban-test.local
+      RESEND_FROM_EMAIL: ci@kanban-test.local
+      EMAIL_DEV_MODE: "true"
       CORS_ORIGINS: http://localhost:5173
       RATE_LIMIT_ENABLED: "false"
+      TESTING: "true"
 
     steps:
       - name: Checkout del código
@@ -101,12 +98,21 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-          cache: "pip"
+          # Sin cache de pip — garantiza que se instala la versión exacta
+          # del requirements.txt en cada run sin usar versiones cacheadas.
 
       - name: Instalar dependencias
         run: |
-          pip install -r requirements.txt
-          pip install -r requirements-dev.txt
+          pip install --no-cache-dir -r requirements.txt
+          pip install --no-cache-dir -r requirements-dev.txt
+          pip install --no-cache-dir psycopg2-binary
+          # Forzar pytest-asyncio 0.24.0 al final — sobrescribe cualquier
+          # versión 0.23.x que arrastren requirements.txt o requirements-dev.txt
+          pip install --no-cache-dir --force-reinstall "pytest-asyncio==0.24.0"
+
+      - name: Verificar versión de pytest-asyncio
+        run: |
+          python -c "import importlib.metadata as m; v = m.version('pytest-asyncio'); print('pytest-asyncio:', v); assert v == '0.24.0', f'Version incorrecta: {v}'"
 
       - name: Esperar a que PostgreSQL esté listo
         run: |
@@ -114,10 +120,7 @@ jobs:
             echo "Esperando PostgreSQL..."
             sleep 2
           done
-          echo "PostgreSQL listo"
-
-      - name: Aplicar migraciones Alembic
-        run: alembic upgrade head
+          echo "PostgreSQL listo ✓"
 
       - name: Tests unitarios
         run: |
@@ -126,7 +129,7 @@ jobs:
             --quiet \
             -v
 
-      - name: Tests de integración
+      - name: Tests de integración con cobertura
         run: |
           pytest tests/integration/ \
             --tb=short \
@@ -137,10 +140,10 @@ jobs:
             --cov-report=xml:coverage.xml \
             --cov-fail-under=70
 
-      - name: Publicar reporte de cobertura
+      - name: Publicar reporte de cobertura en Codecov
         uses: codecov/codecov-action@v4
-        if: always()   # Publicar aunque los tests fallen, para ver la cobertura
+        if: always()
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-          files: ./coverage.xml
-          fail_ci_if_error: false   # No fallar el CI si Codecov no está disponible
+          files: ./backend/coverage.xml
+          fail_ci_if_error: false

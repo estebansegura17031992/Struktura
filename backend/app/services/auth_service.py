@@ -286,7 +286,7 @@ class AuthService:
         )
 
         # En producción esta URL vendría de una variable de entorno FRONTEND_URL
-        reset_url = f"http://localhost:5173/reset-password?token={raw_token}"
+        reset_url = f"{settings.FRONTEND_URL}/reset-password?token={raw_token}"
         await send_reset_password_email(user.email, user.username, reset_url)
         await self.session.commit()
 

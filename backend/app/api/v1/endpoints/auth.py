@@ -21,7 +21,7 @@ from app.schemas.auth import (
     ResetPasswordRequest,
     VerifyEmailRequest,
 )
-from app.schemas.common import MessageResponse
+from app.schemas.common import MessageResponse, RegisterResponse
 from app.schemas.user import UserRegisterRequest, UserResponse
 from app.services.auth_service import AuthService
 
@@ -52,7 +52,7 @@ def _clear_refresh_cookie(response: Response) -> None:
     response.delete_cookie(key="refresh_token", path="/")
 
 
-@router.post("/register", response_model=MessageResponse, status_code=201)
+@router.post("/register", response_model=RegisterResponse, status_code=201)
 @limiter.limit("5/15minutes")
 async def register(request: Request, body: UserRegisterRequest, db: DB):
     """
@@ -62,9 +62,10 @@ async def register(request: Request, body: UserRegisterRequest, db: DB):
     """
     service = AuthService(db)
     ip = request.client.host if request.client else None
-    await service.register(body, ip=ip)
-    return MessageResponse(
-        message="Registro exitoso. Revisa tu email para verificar tu cuenta."
+    user = await service.register(body, ip=ip)
+    return RegisterResponse(
+        message="Registro exitoso. Revisa tu email para verificar tu cuenta.",
+        user_id=str(user.id),
     )
 
 

@@ -37,6 +37,7 @@ addopts = "--tb=short"
 source = ["app"]
 omit = [
     "app/main.py",        # solo registra routers, poco lógica
+    "app/dependencies.py",  # solo funciones para inyectar dependencias, poco lógica
     "alembic/*",
     "tests/*",
 ]

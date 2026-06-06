@@ -22,36 +22,47 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.project import Project, ProjectMember
 from app.models.user import User
 
-
 # ─────────────────────────────────────────────────────────────────────────────
 # Helpers — mismo estilo que test_auth.py
 # ─────────────────────────────────────────────────────────────────────────────
 
-async def _register(client: AsyncClient, email: str, username: str, password: str = "Test1234!") -> str:
+
+async def _register(
+    client: AsyncClient, email: str, username: str, password: str = "Test1234!"
+) -> str:
     """Registra un usuario y retorna el código de verificación capturado."""
     captured = {}
 
     async def fake_send(e, u, code):
         captured["code"] = code
 
-    with patch("app.services.auth_service.send_verification_email", side_effect=fake_send):
-        resp = await client.post("/api/v1/auth/register", json={
-            "email": email,
-            "username": username,
-            "password": password,
-            "full_name": f"Test {username}",
-            "timezone": "UTC",
-        })
+    with patch(
+        "app.services.auth_service.send_verification_email", side_effect=fake_send
+    ):
+        resp = await client.post(
+            "/api/v1/auth/register",
+            json={
+                "email": email,
+                "username": username,
+                "password": password,
+                "full_name": f"Test {username}",
+                "timezone": "UTC",
+            },
+        )
     assert resp.status_code == 201, f"register falló ({resp.status_code}): {resp.text}"
     return captured["code"]
 
 
 async def _verify(client: AsyncClient, email: str, code: str) -> None:
-    resp = await client.post("/api/v1/auth/verify-email", json={"email": email, "code": code})
+    resp = await client.post(
+        "/api/v1/auth/verify-email", json={"email": email, "code": code}
+    )
     assert resp.status_code == 200, f"verify falló ({resp.status_code}): {resp.text}"
 
 
-async def _register_and_verify(client: AsyncClient, email: str, username: str, password: str = "Test1234!") -> dict:
+async def _register_and_verify(
+    client: AsyncClient, email: str, username: str, password: str = "Test1234!"
+) -> dict:
     """Registra y verifica. Retorna {email, username, password}."""
     code = await _register(client, email, username, password)
     await _verify(client, email, code)
@@ -60,12 +71,16 @@ async def _register_and_verify(client: AsyncClient, email: str, username: str, p
 
 async def _login(client: AsyncClient, email: str, password: str = "Test1234!") -> str:
     """Retorna access_token."""
-    resp = await client.post("/api/v1/auth/login", json={"email": email, "password": password})
+    resp = await client.post(
+        "/api/v1/auth/login", json={"email": email, "password": password}
+    )
     assert resp.status_code == 200, f"login falló ({resp.status_code}): {resp.text}"
     return resp.json()["access_token"]
 
 
-async def _headers(client: AsyncClient, email: str, password: str = "Test1234!") -> dict:
+async def _headers(
+    client: AsyncClient, email: str, password: str = "Test1234!"
+) -> dict:
     token = await _login(client, email, password)
     return {"Authorization": f"Bearer {token}"}
 
@@ -76,9 +91,13 @@ async def _set_role(db: AsyncSession, email: str, role: str) -> None:
     await db.commit()
 
 
-async def _create_project(client: AsyncClient, headers: dict, name: str = "Proyecto Test") -> dict:
+async def _create_project(
+    client: AsyncClient, headers: dict, name: str = "Proyecto Test"
+) -> dict:
     resp = await client.post("/api/v1/projects", json={"name": name}, headers=headers)
-    assert resp.status_code == 201, f"create_project falló ({resp.status_code}): {resp.text}"
+    assert (
+        resp.status_code == 201
+    ), f"create_project falló ({resp.status_code}): {resp.text}"
     return resp.json()
 
 
@@ -89,7 +108,9 @@ async def _get_reset_token(client: AsyncClient, email: str) -> str:
     async def capture(e, u, reset_url):
         captured["token"] = reset_url.split("token=")[-1]
 
-    with patch("app.services.auth_service.send_reset_password_email", side_effect=capture):
+    with patch(
+        "app.services.auth_service.send_reset_password_email", side_effect=capture
+    ):
         resp = await client.post("/api/v1/auth/forgot-password", json={"email": email})
     assert resp.status_code == 200
     return captured["token"]
@@ -98,6 +119,7 @@ async def _get_reset_token(client: AsyncClient, email: str) -> str:
 # ─────────────────────────────────────────────────────────────────────────────
 # E02 — require_role (ART-01 · R-0201)
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 @pytest.mark.asyncio
 async def test_admin_accede_a_lista_usuarios(client, db_session):
@@ -164,6 +186,7 @@ async def test_error_rbac_sigue_formato_estandar(client, db_session):
 # E02 — cambio de rol (ART-04 · R-0204)
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 @pytest.mark.asyncio
 async def test_admin_cambia_rol_a_viewer(client, db_session):
     admin = await _register_and_verify(client, "adm2@test.dev", "adminrol1")
@@ -173,7 +196,9 @@ async def test_admin_cambia_rol_a_viewer(client, db_session):
 
     # Obtener el ID del target
     resp_list = await client.get("/api/v1/admin/users", headers=headers)
-    target_id = next(u["id"] for u in resp_list.json()["items"] if u["email"] == target["email"])
+    target_id = next(
+        u["id"] for u in resp_list.json()["items"] if u["email"] == target["email"]
+    )
 
     resp = await client.patch(
         f"/api/v1/admin/users/{target_id}/role",
@@ -192,7 +217,9 @@ async def test_no_se_puede_degradar_unico_admin(client, db_session):
     headers = await _headers(client, admin["email"])
 
     resp_list = await client.get("/api/v1/admin/users", headers=headers)
-    admin_id = next(u["id"] for u in resp_list.json()["items"] if u["email"] == admin["email"])
+    admin_id = next(
+        u["id"] for u in resp_list.json()["items"] if u["email"] == admin["email"]
+    )
 
     resp = await client.patch(
         f"/api/v1/admin/users/{admin_id}/role",
@@ -211,7 +238,9 @@ async def test_rol_invalido_retorna_error_validacion(client, db_session):
     headers = await _headers(client, admin["email"])
 
     resp_list = await client.get("/api/v1/admin/users", headers=headers)
-    target_id = next(u["id"] for u in resp_list.json()["items"] if u["email"] == target["email"])
+    target_id = next(
+        u["id"] for u in resp_list.json()["items"] if u["email"] == target["email"]
+    )
 
     resp = await client.patch(
         f"/api/v1/admin/users/{target_id}/role",
@@ -225,13 +254,16 @@ async def test_rol_invalido_retorna_error_validacion(client, db_session):
 # E03 — verify_project_membership (ART-02 · R-0202)
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 @pytest.mark.asyncio
 async def test_owner_accede_al_proyecto(client):
     owner = await _register_and_verify(client, "own1@test.dev", "owner1")
     headers = await _headers(client, owner["email"])
     project = await _create_project(client, headers)
 
-    resp = await client.get(f"/api/v1/projects/{project['id']}/members", headers=headers)
+    resp = await client.get(
+        f"/api/v1/projects/{project['id']}/members", headers=headers
+    )
     assert resp.status_code == 200, "Owner debe ver los miembros"
 
 
@@ -245,7 +277,9 @@ async def test_no_miembro_recibe_403_no_404(client):
     stranger_h = await _headers(client, stranger["email"])
     project = await _create_project(client, owner_h)
 
-    resp = await client.get(f"/api/v1/projects/{project['id']}/members", headers=stranger_h)
+    resp = await client.get(
+        f"/api/v1/projects/{project['id']}/members", headers=stranger_h
+    )
     assert resp.status_code == 403, "No-miembro debe recibir 403"
 
 
@@ -259,17 +293,26 @@ async def test_miembro_removido_recibe_403(client):
     project = await _create_project(client, owner_h)
 
     # Agregar y luego remover
-    resp_m = await client.get("/api/v1/admin/users", headers=owner_h)
+    await client.get("/api/v1/admin/users", headers=owner_h)
     # Obtener member_id via listado de miembros tras agregarlo
     await client.post(
         f"/api/v1/projects/{project['id']}/members",
-        json={"user_id": (await client.get("/api/v1/users/me", headers=member_h)).json()["id"], "role": "viewer"},
+        json={
+            "user_id": (await client.get("/api/v1/users/me", headers=member_h)).json()[
+                "id"
+            ],
+            "role": "viewer",
+        },
         headers=owner_h,
     )
     member_id = (await client.get("/api/v1/users/me", headers=member_h)).json()["id"]
-    await client.delete(f"/api/v1/projects/{project['id']}/members/{member_id}", headers=owner_h)
+    await client.delete(
+        f"/api/v1/projects/{project['id']}/members/{member_id}", headers=owner_h
+    )
 
-    resp = await client.get(f"/api/v1/projects/{project['id']}/members", headers=member_h)
+    resp = await client.get(
+        f"/api/v1/projects/{project['id']}/members", headers=member_h
+    )
     assert resp.status_code == 403, "Miembro removido debe recibir 403"
 
 
@@ -284,7 +327,9 @@ async def test_admin_sistema_accede_sin_ser_miembro(client, db_session):
     admin_h = await _headers(client, admin["email"])
     project = await _create_project(client, owner_h)
 
-    resp = await client.get(f"/api/v1/projects/{project['id']}/members", headers=admin_h)
+    resp = await client.get(
+        f"/api/v1/projects/{project['id']}/members", headers=admin_h
+    )
     assert resp.status_code == 200, "Admin accede sin membresía explícita"
 
 
@@ -304,13 +349,16 @@ async def test_proyecto_inexistente_retorna_404(client):
 # E03 — CRUD proyectos (ART-09 · R-0301 · R-0302)
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 @pytest.mark.asyncio
 async def test_crear_proyecto_registra_creador_como_owner(client):
     user = await _register_and_verify(client, "cr1@test.dev", "creator1")
     headers = await _headers(client, user["email"])
     project = await _create_project(client, headers, "Mi Proyecto")
 
-    members = await client.get(f"/api/v1/projects/{project['id']}/members", headers=headers)
+    members = await client.get(
+        f"/api/v1/projects/{project['id']}/members", headers=headers
+    )
     assert members.status_code == 200
     roles = [m["role"] for m in members.json()]
     assert "owner" in roles, "Creador debe quedar como owner"
@@ -322,7 +370,9 @@ async def test_viewer_no_puede_crear_proyecto(client, db_session):
     await _set_role(db_session, user["email"], "viewer")
     headers = await _headers(client, user["email"])
 
-    resp = await client.post("/api/v1/projects", json={"name": "No permitido"}, headers=headers)
+    resp = await client.post(
+        "/api/v1/projects", json={"name": "No permitido"}, headers=headers
+    )
     assert resp.status_code == 403, "Viewer no puede crear proyectos"
 
 
@@ -397,7 +447,9 @@ async def test_soft_delete_proyecto_sin_tareas(client, db_session):
         select(Project).where(Project.id == UUID(project["id"]))
     )
     p = result.scalar_one_or_none()
-    assert p is not None and p.deleted_at is not None, "deleted_at debe estar establecido"
+    assert (
+        p is not None and p.deleted_at is not None
+    ), "deleted_at debe estar establecido"
 
 
 @pytest.mark.asyncio
@@ -409,6 +461,7 @@ async def test_soft_delete_con_tareas_activas_retorna_409():
 # ─────────────────────────────────────────────────────────────────────────────
 # E03 — Gestión de miembros (ART-10 · R-0303)
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 @pytest.mark.asyncio
 async def test_agregar_miembro_como_viewer(client):
@@ -538,6 +591,7 @@ async def test_historial_incluye_miembros_removidos(client):
 # E03 — Transferencia de ownership (ART-11 · R-0304 · DU-02)
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 @pytest.mark.asyncio
 async def test_transferir_ownership_exitoso(client, db_session):
     owner = await _register_and_verify(client, "ot1@test.dev", "owntr1")
@@ -546,7 +600,9 @@ async def test_transferir_ownership_exitoso(client, db_session):
     owner_h = await _headers(client, owner["email"])
     new_owner_h = await _headers(client, new_owner["email"])
     project = await _create_project(client, owner_h)
-    new_owner_id = (await client.get("/api/v1/users/me", headers=new_owner_h)).json()["id"]
+    new_owner_id = (await client.get("/api/v1/users/me", headers=new_owner_h)).json()[
+        "id"
+    ]
 
     await client.post(
         f"/api/v1/projects/{project['id']}/members",
@@ -581,7 +637,9 @@ async def test_owner_anterior_queda_como_editor(client, db_session):
     new_owner_h = await _headers(client, new_owner["email"])
     project = await _create_project(client, owner_h)
     owner_id = (await client.get("/api/v1/users/me", headers=owner_h)).json()["id"]
-    new_owner_id = (await client.get("/api/v1/users/me", headers=new_owner_h)).json()["id"]
+    new_owner_id = (await client.get("/api/v1/users/me", headers=new_owner_h)).json()[
+        "id"
+    ]
 
     await client.post(
         f"/api/v1/projects/{project['id']}/members",
@@ -602,7 +660,9 @@ async def test_owner_anterior_queda_como_editor(client, db_session):
         )
     )
     pm = result.scalar_one_or_none()
-    assert pm is not None and pm.role == "editor", "Owner anterior debe quedar como editor"
+    assert (
+        pm is not None and pm.role == "editor"
+    ), "Owner anterior debe quedar como editor"
 
 
 @pytest.mark.asyncio
@@ -637,7 +697,9 @@ async def test_no_miembro_no_puede_recibir_ownership(client):
     owner_h = await _headers(client, owner["email"])
     stranger_h = await _headers(client, stranger["email"])
     project = await _create_project(client, owner_h)
-    stranger_id = (await client.get("/api/v1/users/me", headers=stranger_h)).json()["id"]
+    stranger_id = (await client.get("/api/v1/users/me", headers=stranger_h)).json()[
+        "id"
+    ]
 
     resp = await client.post(
         f"/api/v1/projects/{project['id']}/transfer-ownership",
@@ -665,6 +727,7 @@ async def test_no_se_puede_transferir_a_si_mismo(client):
 # ─────────────────────────────────────────────────────────────────────────────
 # Seguridad — escalada de privilegios (riesgo crítico del kick-off)
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 @pytest.mark.asyncio
 async def test_editor_no_puede_asignar_rol_owner(client):
@@ -725,6 +788,7 @@ async def test_viewer_no_puede_agregar_miembros(client):
 # ─────────────────────────────────────────────────────────────────────────────
 # E02 — forgot/reset password (ART-05 · R-0205)
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 @pytest.mark.asyncio
 async def test_forgot_password_siempre_200_aunque_email_no_exista(client):
@@ -808,4 +872,7 @@ async def test_reset_revoca_todos_los_refresh_tokens(client):
 
     # El refresh anterior (en cookie httponly) debe estar revocado
     refresh_resp = await client.post("/api/v1/auth/refresh")
-    assert refresh_resp.status_code in (401, 403), "Refresh anterior debe estar revocado"
+    assert refresh_resp.status_code in (
+        401,
+        403,
+    ), "Refresh anterior debe estar revocado"

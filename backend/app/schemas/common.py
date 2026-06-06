@@ -30,6 +30,7 @@ class ErrorResponse(BaseModel):
 class MessageResponse(BaseModel):
     message: str
 
+
 class RegisterResponse(BaseModel):
     message: str
     user_id: str

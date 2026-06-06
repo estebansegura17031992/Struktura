@@ -21,11 +21,9 @@ from app.schemas.auth import (
     ResetPasswordRequest,
     VerifyEmailRequest,
 )
-from app.schemas.common import MessageResponse
+from app.schemas.common import MessageResponse, RegisterResponse
 from app.schemas.user import UserRegisterRequest, UserResponse
 from app.services.auth_service import AuthService
-from app.schemas.common import MessageResponse, RegisterResponse
-
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 

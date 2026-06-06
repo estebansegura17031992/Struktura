@@ -11,7 +11,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field, field_validator
 
-from app.models.project import ProjectMemberRole
+from app.models.project import ProjectMember
 
 # ── Request schemas ────────────────────────────────────────────────────────────
 
@@ -46,10 +46,18 @@ class ProjectUpdate(BaseModel):
 
 class AddMemberRequest(BaseModel):
     user_id: uuid.UUID
-    role: ProjectMemberRole = Field(
-        default=ProjectMemberRole.viewer,
-        description="Rol del nuevo miembro en el proyecto",
+    role: str = Field(
+        default="viewer",
+        description="Rol del nuevo miembro en el proyecto: owner | editor | viewer",
     )
+
+    @field_validator("role")
+    @classmethod
+    def validate_role(cls, v: str) -> str:
+        allowed = {"owner", "editor", "viewer"}
+        if v not in allowed:
+            raise ValueError(f"Rol inválido. Permitidos: {', '.join(sorted(allowed))}")
+        return v
 
 
 class TransferOwnershipRequest(BaseModel):
@@ -58,7 +66,7 @@ class TransferOwnershipRequest(BaseModel):
     )
 
 
-# ── Response schemas ────────────────────────────────────────────────────────────
+# ── Response schemas ───────────────────────────────────────────────────────────
 
 
 class MemberUserResponse(BaseModel):
@@ -81,7 +89,7 @@ class ProjectMemberResponse(BaseModel):
     id: str
     project_id: str
     user_id: str
-    role: ProjectMemberRole
+    role: str
     joined_at: datetime
     removed_at: datetime | None
     is_active: bool
@@ -90,23 +98,23 @@ class ProjectMemberResponse(BaseModel):
     model_config = {"from_attributes": True}
 
     @classmethod
-    def from_orm_with_user(cls, member: object) -> "ProjectMemberResponse":
+    def from_orm_with_user(cls, member: ProjectMember) -> "ProjectMemberResponse":
         return cls(
-            id=str(member.id),  # type: ignore[attr-defined]
-            project_id=str(member.project_id),  # type: ignore[attr-defined]
-            user_id=str(member.user_id),  # type: ignore[attr-defined]
-            role=member.role,  # type: ignore[attr-defined]
-            joined_at=member.joined_at,  # type: ignore[attr-defined]
-            removed_at=member.removed_at,  # type: ignore[attr-defined]
-            is_active=member.is_active,  # type: ignore[attr-defined]
+            id=str(member.id),
+            project_id=str(member.project_id),
+            user_id=str(member.user_id),
+            role=member.role,
+            joined_at=member.joined_at,
+            removed_at=member.removed_at,
+            is_active=member.removed_at is None,
             user=MemberUserResponse(
-                id=str(member.user.id),  # type: ignore[attr-defined]
-                username=member.user.username,  # type: ignore[attr-defined]
-                full_name=member.user.full_name,  # type: ignore[attr-defined]
-                role=member.user.role,  # type: ignore[attr-defined]
+                id=str(member.user.id),
+                username=member.user.username,
+                full_name=member.user.full_name,
+                role=member.user.role,
             )
-            if member.user
-            else None,  # type: ignore[attr-defined]
+            if hasattr(member, "user") and member.user is not None
+            else None,
         )
 
 

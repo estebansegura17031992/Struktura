@@ -21,16 +21,15 @@ import structlog
 from fastapi import Depends, HTTPException, Path, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.security import get_current_user  # noqa: F401 — re-exportado
-from app.database import get_db
-from app.models.project import ProjectMember, ProjectMemberRole
-from app.models.user import User, UserRole  # noqa: F401 — importado para type hints
-from app.repositories.project_repository import ProjectRepository
+from app.api.deps.auth import get_current_user
+from app.api.deps.db import get_db
+from app.models.project import ProjectMember
+from app.models.user import User
 
 logger = structlog.get_logger(__name__)
 
 
-# ── require_role ──────────────────────────────────────────────────────────────
+# ── require_role ───────────────────────────────────────────────────────────────
 
 
 def require_role(*allowed_roles: str):
@@ -79,7 +78,7 @@ def require_role(*allowed_roles: str):
     return _check_role
 
 
-# ── verify_project_membership ─────────────────────────────────────────────────
+# ── verify_project_membership ──────────────────────────────────────────────────
 
 
 async def verify_project_membership(
@@ -100,6 +99,8 @@ async def verify_project_membership(
 
     ART-02 · R-0202
     """
+    from app.repositories.project_repository import ProjectRepository
+
     repo = ProjectRepository(db)
 
     # Verificar que el proyecto existe y no está soft-deleted
@@ -118,7 +119,6 @@ async def verify_project_membership(
     # Los admins del sistema tienen acceso a todos los proyectos
     # sin necesidad de membresía explícita (R-0202)
     if current_user.role == "admin":
-        # Buscar membresía para retornar el rol de proyecto si existe
         membership = await repo.get_active_membership(project_id, current_user.id)
         if membership:
             return membership
@@ -127,7 +127,7 @@ async def verify_project_membership(
         virtual_member = ProjectMember()
         virtual_member.project_id = project_id
         virtual_member.user_id = current_user.id
-        virtual_member.role = ProjectMemberRole.editor
+        virtual_member.role = "editor"
         virtual_member.removed_at = None
         return virtual_member
 
@@ -153,18 +153,19 @@ async def verify_project_membership(
     return membership
 
 
-# ── Helpers de autorización de proyecto ──────────────────────────────────────
+# ── Helpers de autorización de proyecto ───────────────────────────────────────
 
 
-def require_project_role(*allowed_project_roles: ProjectMemberRole):
+def require_project_role(*allowed_project_roles: str):
     """
     Dependency factory que valida el rol dentro del proyecto.
     Se usa DESPUÉS de verify_project_membership.
 
     Uso:
         membership: ProjectMember = Depends(verify_project_membership),
-        _: None = Depends(require_project_role(ProjectMemberRole.owner)),
+        _: None = Depends(require_project_role("owner")),
 
+    Roles válidos: owner | editor | viewer
     R-0202
     """
 
@@ -179,14 +180,12 @@ def require_project_role(*allowed_project_roles: ProjectMemberRole):
                         "code": "FORBIDDEN",
                         "message": (
                             f"Se requiere rol de proyecto "
-                            f"{' o '.join(r.value for r in allowed_project_roles)} "
+                            f"{' o '.join(allowed_project_roles)} "
                             f"para esta operación."
                         ),
                         "details": {
                             "your_project_role": membership.role,
-                            "required_project_roles": [
-                                r.value for r in allowed_project_roles
-                            ],
+                            "required_project_roles": list(allowed_project_roles),
                         },
                     }
                 },

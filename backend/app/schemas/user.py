@@ -6,6 +6,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
+from app.models.user import User
+
 # ── Auth / registro ────────────────────────────────────────────────────────────
 
 
@@ -105,15 +107,15 @@ class UserAdminResponse(BaseModel):
     model_config = {"from_attributes": True}
 
     @classmethod
-    def from_orm(cls, user: object) -> "UserAdminResponse":
+    def from_orm(cls, user: User) -> "UserAdminResponse":
         return cls(
             id=str(user.id),
             email=user.email,
             username=user.username,
             full_name=user.full_name,
             role=user.role,
-            is_verified=user.is_verified,
-            is_active=user.is_active,
+            is_verified=user.email_verified,
+            is_active=user.deleted_at is None,
             timezone=user.timezone,
             created_at=user.created_at,
         )

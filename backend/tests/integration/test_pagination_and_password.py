@@ -10,15 +10,12 @@ Cubre:
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, patch
 
-import pytest
-import pytest_asyncio
 from httpx import AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.user import PasswordResetToken, User
 from app.utils.pagination import MAX_PAGE_SIZE_DEFAULT, MAX_PAGE_SIZE_KANBAN, paginate
-
 
 # ═══════════════════════════════════════════════════════════════════
 # Helpers
@@ -40,8 +37,8 @@ async def _register_and_verify(
     assert resp.status_code == 201, resp.text
 
     # Capturar código de verificación desde el mock
-    from unittest.mock import call
     import app.services.auth_service as svc
+
     # El email mock guarda el código en el último call
     code = None
     for c in svc.send_verification_email.call_args_list:  # type: ignore[attr-defined]
@@ -57,13 +54,14 @@ async def _register_and_verify(
 
 async def _set_role(db: AsyncSession, user_id: str, role: str) -> None:
     from sqlalchemy import update
-    await db.execute(
-        update(User).where(User.id == user_id).values(role=role)
-    )
+
+    await db.execute(update(User).where(User.id == user_id).values(role=role))
     await db.commit()
 
 
-async def _login_headers(client: AsyncClient, email: str, password: str = "Test1234!") -> dict:
+async def _login_headers(
+    client: AsyncClient, email: str, password: str = "Test1234!"
+) -> dict:
     resp = await client.post(
         "/api/v1/auth/login",
         json={"email": email, "password": password},
@@ -138,9 +136,7 @@ class TestPaginate:
 
         assert result.page_size_applied is None
 
-    async def test_tabla_vacia_retorna_total_pages_uno(
-        self, db_session: AsyncSession
-    ):
+    async def test_tabla_vacia_retorna_total_pages_uno(self, db_session: AsyncSession):
         """Sin resultados: total=0, total_pages=1, items vacío."""
         query = select(User).where(User.deleted_at.is_(None))
         result = await paginate(db_session, query, page=1, page_size=20)
@@ -201,9 +197,7 @@ class TestForgotResetPasswordService:
         )
         assert resp.status_code == 200
 
-    async def test_reset_password_token_invalido_retorna_400(
-        self, client: AsyncClient
-    ):
+    async def test_reset_password_token_invalido_retorna_400(self, client: AsyncClient):
         """Token inválido retorna 400."""
         resp = await client.post(
             "/api/v1/auth/reset-password",
@@ -260,7 +254,6 @@ class TestForgotResetPasswordService:
         self, client: AsyncClient, db_session: AsyncSession
     ):
         """Token marcado como usado retorna 410 Gone."""
-        from sqlalchemy import update
         import hashlib
 
         raw_token = "token_ya_usado_test_123"
@@ -308,13 +301,9 @@ class TestForgotResetPasswordService:
         ) as mock_email:
             mock_email.return_value = None
             # Primera solicitud
-            await client.post(
-                "/api/v1/auth/forgot-password", json={"email": email}
-            )
+            await client.post("/api/v1/auth/forgot-password", json={"email": email})
             # Segunda solicitud — debe invalidar la primera
-            await client.post(
-                "/api/v1/auth/forgot-password", json={"email": email}
-            )
+            await client.post("/api/v1/auth/forgot-password", json={"email": email})
 
         # Verificar que solo queda un token activo (used=False)
         result = await db_session.execute(
@@ -323,6 +312,6 @@ class TestForgotResetPasswordService:
             .where(User.email == email, PasswordResetToken.used.is_(False))
         )
         active_tokens = result.scalars().all()
-        assert len(active_tokens) >= 1, (
-            f"Debería haber al menos 1 token activo, hay {len(active_tokens)}"
-        )
+        assert (
+            len(active_tokens) >= 1
+        ), f"Debería haber al menos 1 token activo, hay {len(active_tokens)}"

@@ -1,4 +1,5 @@
 """Schemas de usuario — request/response DTOs (R-0101, R-0108, R-0204)."""
+
 import re
 from datetime import datetime
 from uuid import UUID
@@ -7,12 +8,13 @@ from pydantic import BaseModel, EmailStr, Field, field_validator
 
 # ── Auth / registro ────────────────────────────────────────────────────────────
 
+
 class UserRegisterRequest(BaseModel):
     username: str
     email: EmailStr
     password: str
     full_name: str | None = None
-    timezone: str = "UTC"           # detectado automáticamente por el frontend (AG-02)
+    timezone: str = "UTC"  # detectado automáticamente por el frontend (AG-02)
 
     @field_validator("username")
     @classmethod
@@ -20,7 +22,9 @@ class UserRegisterRequest(BaseModel):
         if not 3 <= len(v) <= 30:
             raise ValueError("El username debe tener entre 3 y 30 caracteres")
         if not re.match(r"^[a-zA-Z0-9_]+$", v):
-            raise ValueError("El username solo puede contener letras, números y guiones bajos")
+            raise ValueError(
+                "El username solo puede contener letras, números y guiones bajos"
+            )
         return v.lower()
 
     @field_validator("password")
@@ -34,6 +38,7 @@ class UserRegisterRequest(BaseModel):
 
 
 # ── Perfil de usuario ──────────────────────────────────────────────────────────
+
 
 class UserResponse(BaseModel):
     id: UUID
@@ -69,8 +74,10 @@ class ChangePasswordRequest(BaseModel):
 
 # ── Admin schemas (Sprint 2 · ART-04 · R-0204) ────────────────────────────────
 
+
 class ChangeRoleRequest(BaseModel):
     """Body para PATCH /admin/users/{id}/role"""
+
     role: str = Field(..., description="Nuevo rol: viewer | editor | admin")
 
     @field_validator("role")
@@ -84,6 +91,7 @@ class ChangeRoleRequest(BaseModel):
 
 class UserAdminResponse(BaseModel):
     """DTO de usuario para el panel de administración."""
+
     id: str
     email: str
     username: str
@@ -113,6 +121,7 @@ class UserAdminResponse(BaseModel):
 
 class UserListResponse(BaseModel):
     """Response paginado para listado de usuarios (admin)."""
+
     items: list[UserAdminResponse]
     page: int
     page_size: int

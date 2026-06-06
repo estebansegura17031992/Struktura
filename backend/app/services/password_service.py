@@ -12,6 +12,7 @@ Reglas de seguridad (revisión Security Día 5):
   - Nunca loggear el token en texto plano
   - Rate limiting en el router: 3 req/IP/15min (ya configurado en auth.py)
 """
+
 import hashlib
 import secrets
 from datetime import UTC, datetime, timedelta
@@ -37,7 +38,6 @@ def _hash_token(raw_token: str) -> str:
 
 
 class PasswordService:
-
     def __init__(self, db: AsyncSession) -> None:
         self.db = db
         self.email = EmailService()
@@ -55,7 +55,9 @@ class PasswordService:
         user = result.scalar_one_or_none()
 
         if not user:
-            logger.info("password.reset_requested_unknown_email", email_hash=_hash_token(email))
+            logger.info(
+                "password.reset_requested_unknown_email", email_hash=_hash_token(email)
+            )
             return  # 200 silencioso — no revelar existencia de cuenta
 
         # Invalidar tokens anteriores no usados del mismo usuario

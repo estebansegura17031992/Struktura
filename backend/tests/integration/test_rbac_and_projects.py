@@ -33,53 +33,73 @@ from app.models.user import User
 # Helpers — mismo estilo que test_auth.py
 # ─────────────────────────────────────────────────────────────────────────────
 
-async def _register_and_verify(client: AsyncClient, email: str, username: str, password: str = "Test1234!") -> dict:
+
+async def _register_and_verify(
+    client: AsyncClient, email: str, username: str, password: str = "Test1234!"
+) -> dict:
     """Registra y verifica un usuario, retorna {id, email, username, password}."""
     captured: dict = {}
 
     async def fake_send(email_, username_, code):
         captured["code"] = code
 
-    with patch("app.services.auth_service.send_verification_email", side_effect=fake_send):
-        resp = await client.post("/api/v1/auth/register", json={
-            "email": email,
-            "username": username,
-            "password": password,
-            "full_name": f"Test {username}",
-            "timezone": "UTC",
-        })
+    with patch(
+        "app.services.auth_service.send_verification_email", side_effect=fake_send
+    ):
+        resp = await client.post(
+            "/api/v1/auth/register",
+            json={
+                "email": email,
+                "username": username,
+                "password": password,
+                "full_name": f"Test {username}",
+                "timezone": "UTC",
+            },
+        )
     assert resp.status_code == 201, f"register falló: {resp.text}"
 
-    resp2 = await client.post("/api/v1/auth/verify-email", json={
-        "email": email,
-        "code": captured["code"],
-    })
+    resp2 = await client.post(
+        "/api/v1/auth/verify-email",
+        json={
+            "email": email,
+            "code": captured["code"],
+        },
+    )
     assert resp2.status_code == 200, f"verify falló: {resp2.text}"
 
-    return {"id": resp.json()["id"], "email": email, "username": username, "password": password}
+    return {
+        "id": resp.json()["id"],
+        "email": email,
+        "username": username,
+        "password": password,
+    }
 
 
 async def _login(client: AsyncClient, email: str, password: str = "Test1234!") -> str:
     """Retorna el access_token."""
-    resp = await client.post("/api/v1/auth/login", json={"email": email, "password": password})
+    resp = await client.post(
+        "/api/v1/auth/login", json={"email": email, "password": password}
+    )
     assert resp.status_code == 200, f"login falló: {resp.text}"
     return resp.json()["access_token"]
 
 
-async def _headers(client: AsyncClient, email: str, password: str = "Test1234!") -> dict:
+async def _headers(
+    client: AsyncClient, email: str, password: str = "Test1234!"
+) -> dict:
     token = await _login(client, email, password)
     return {"Authorization": f"Bearer {token}"}
 
 
 async def _set_role(db: AsyncSession, user_id: str, role: str) -> None:
     """Helper: cambia el rol de un usuario directamente en DB (para setup de tests)."""
-    await db.execute(
-        update(User).where(User.id == UUID(user_id)).values(role=role)
-    )
+    await db.execute(update(User).where(User.id == UUID(user_id)).values(role=role))
     await db.commit()
 
 
-async def _create_project(client: AsyncClient, headers: dict, name: str = "Proyecto Test") -> dict:
+async def _create_project(
+    client: AsyncClient, headers: dict, name: str = "Proyecto Test"
+) -> dict:
     """Crea un proyecto y retorna el JSON del response."""
     resp = await client.post("/api/v1/projects", json={"name": name}, headers=headers)
     assert resp.status_code == 201, f"create_project falló: {resp.text}"
@@ -90,10 +110,13 @@ async def _create_project(client: AsyncClient, headers: dict, name: str = "Proye
 # E02 — require_role: acceso por rol global  (ART-01 · R-0201)
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 class TestRequireRole:
     """ART-01 · R-0201 · R-0202 — middleware RBAC global"""
 
-    async def test_admin_accede_a_lista_usuarios(self, client: AsyncClient, db_session: AsyncSession):
+    async def test_admin_accede_a_lista_usuarios(
+        self, client: AsyncClient, db_session: AsyncSession
+    ):
         user = await _register_and_verify(client, "admin@test.dev", "adminuser")
         await _set_role(db_session, user["id"], "admin")
         headers = await _headers(client, user["email"])
@@ -101,7 +124,9 @@ class TestRequireRole:
         resp = await client.get("/api/v1/admin/users", headers=headers)
         assert resp.status_code == 200, "Admin debe poder listar usuarios"
 
-    async def test_editor_no_puede_listar_usuarios(self, client: AsyncClient, db_session: AsyncSession):
+    async def test_editor_no_puede_listar_usuarios(
+        self, client: AsyncClient, db_session: AsyncSession
+    ):
         """Editor recibe 403 en endpoint de admin — no 401."""
         user = await _register_and_verify(client, "editor@test.dev", "editoruser")
         # El segundo usuario registrado recibe rol editor (AG-01)
@@ -111,7 +136,9 @@ class TestRequireRole:
         assert resp.status_code == 403, "Editor no debe acceder a admin/users"
         assert resp.json()["error"]["code"] == "FORBIDDEN"
 
-    async def test_viewer_no_puede_listar_usuarios(self, client: AsyncClient, db_session: AsyncSession):
+    async def test_viewer_no_puede_listar_usuarios(
+        self, client: AsyncClient, db_session: AsyncSession
+    ):
         user = await _register_and_verify(client, "viewer@test.dev", "vieweruser")
         await _set_role(db_session, user["id"], "viewer")
         headers = await _headers(client, user["email"])
@@ -131,7 +158,9 @@ class TestRequireRole:
         )
         assert resp.status_code == 401, "Token inválido debe retornar 401"
 
-    async def test_error_sigue_formato_estandar(self, client: AsyncClient, db_session: AsyncSession):
+    async def test_error_sigue_formato_estandar(
+        self, client: AsyncClient, db_session: AsyncSession
+    ):
         """El response de error de RBAC debe seguir {error: {code, message}}."""
         user = await _register_and_verify(client, "fmt@test.dev", "fmtuser")
         await _set_role(db_session, user["id"], "viewer")
@@ -148,10 +177,13 @@ class TestRequireRole:
 # E02 — Admin: cambio de rol (ART-04 · R-0204)
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 class TestChangeRole:
     """ART-04 · R-0204 — PATCH /admin/users/{id}/role"""
 
-    async def test_admin_cambia_rol_de_editor_a_viewer(self, client: AsyncClient, db_session: AsyncSession):
+    async def test_admin_cambia_rol_de_editor_a_viewer(
+        self, client: AsyncClient, db_session: AsyncSession
+    ):
         admin = await _register_and_verify(client, "a1@test.dev", "admin1")
         await _set_role(db_session, admin["id"], "admin")
         target = await _register_and_verify(client, "t1@test.dev", "target1")
@@ -165,7 +197,9 @@ class TestChangeRole:
         assert resp.status_code == 200, f"cambio de rol falló: {resp.text}"
         assert resp.json()["role"] == "viewer"
 
-    async def test_no_se_puede_degradar_ultimo_admin(self, client: AsyncClient, db_session: AsyncSession):
+    async def test_no_se_puede_degradar_ultimo_admin(
+        self, client: AsyncClient, db_session: AsyncSession
+    ):
         """Si solo hay un admin, degradarlo debe retornar 422 CANNOT_REMOVE_LAST_ADMIN."""
         admin = await _register_and_verify(client, "a2@test.dev", "admin2")
         await _set_role(db_session, admin["id"], "admin")
@@ -179,7 +213,9 @@ class TestChangeRole:
         assert resp.status_code == 422, "Degradar al único admin debe retornar 422"
         assert resp.json()["error"]["code"] == "CANNOT_REMOVE_LAST_ADMIN"
 
-    async def test_rol_invalido_retorna_422(self, client: AsyncClient, db_session: AsyncSession):
+    async def test_rol_invalido_retorna_422(
+        self, client: AsyncClient, db_session: AsyncSession
+    ):
         admin = await _register_and_verify(client, "a3@test.dev", "admin3")
         await _set_role(db_session, admin["id"], "admin")
         target = await _register_and_verify(client, "t3@test.dev", "target3")
@@ -192,7 +228,9 @@ class TestChangeRole:
         )
         assert resp.status_code == 422, "Rol inválido debe retornar 422"
 
-    async def test_cambio_idempotente(self, client: AsyncClient, db_session: AsyncSession):
+    async def test_cambio_idempotente(
+        self, client: AsyncClient, db_session: AsyncSession
+    ):
         """Cambiar al mismo rol que ya tiene no debe fallar."""
         admin = await _register_and_verify(client, "a4@test.dev", "admin4")
         await _set_role(db_session, admin["id"], "admin")
@@ -212,18 +250,25 @@ class TestChangeRole:
 # E03 — verify_project_membership (ART-02 · R-0202)
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 class TestProjectMembership:
     """ART-02 · R-0202 — verify_project_membership dependency"""
 
-    async def test_owner_accede_al_proyecto(self, client: AsyncClient, db_session: AsyncSession):
+    async def test_owner_accede_al_proyecto(
+        self, client: AsyncClient, db_session: AsyncSession
+    ):
         owner = await _register_and_verify(client, "own@test.dev", "owner1")
         headers = await _headers(client, owner["email"])
         project = await _create_project(client, headers)
 
-        resp = await client.get(f"/api/v1/projects/{project['id']}/members", headers=headers)
+        resp = await client.get(
+            f"/api/v1/projects/{project['id']}/members", headers=headers
+        )
         assert resp.status_code == 200, "Owner debe poder ver los miembros"
 
-    async def test_no_miembro_recibe_403_no_404(self, client: AsyncClient, db_session: AsyncSession):
+    async def test_no_miembro_recibe_403_no_404(
+        self, client: AsyncClient, db_session: AsyncSession
+    ):
         """Usuario sin membresía activa recibe 403 — no 404 para no revelar existencia."""
         owner = await _register_and_verify(client, "own2@test.dev", "owner2")
         stranger = await _register_and_verify(client, "str@test.dev", "stranger1")
@@ -239,7 +284,9 @@ class TestProjectMembership:
         )
         assert resp.status_code == 403, "No-miembro debe recibir 403, no 404"
 
-    async def test_miembro_removido_recibe_403(self, client: AsyncClient, db_session: AsyncSession):
+    async def test_miembro_removido_recibe_403(
+        self, client: AsyncClient, db_session: AsyncSession
+    ):
         """Miembro con removed_at IS NOT NULL es tratado como sin membresía."""
         owner = await _register_and_verify(client, "own3@test.dev", "owner3")
         member = await _register_and_verify(client, "mem3@test.dev", "member3")
@@ -267,7 +314,9 @@ class TestProjectMembership:
         )
         assert resp.status_code == 403, "Miembro removido debe recibir 403"
 
-    async def test_admin_accede_sin_ser_miembro(self, client: AsyncClient, db_session: AsyncSession):
+    async def test_admin_accede_sin_ser_miembro(
+        self, client: AsyncClient, db_session: AsyncSession
+    ):
         """Admin del sistema accede a cualquier proyecto sin membresía explícita."""
         owner = await _register_and_verify(client, "own4@test.dev", "owner4")
         admin = await _register_and_verify(client, "adm4@test.dev", "admin4sys")
@@ -284,7 +333,9 @@ class TestProjectMembership:
         )
         assert resp.status_code == 200, "Admin debe acceder sin membresía explícita"
 
-    async def test_proyecto_inexistente_retorna_404(self, client: AsyncClient, db_session: AsyncSession):
+    async def test_proyecto_inexistente_retorna_404(
+        self, client: AsyncClient, db_session: AsyncSession
+    ):
         user = await _register_and_verify(client, "u404@test.dev", "user404")
         headers = await _headers(client, user["email"])
 
@@ -299,10 +350,13 @@ class TestProjectMembership:
 # E03 — CRUD proyectos (ART-09 · R-0301 · R-0302)
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 class TestProjectCRUD:
     """ART-09 · R-0301 · R-0302 — CRUD completo de proyectos"""
 
-    async def test_crear_proyecto_registra_owner_como_miembro(self, client: AsyncClient, db_session: AsyncSession):
+    async def test_crear_proyecto_registra_owner_como_miembro(
+        self, client: AsyncClient, db_session: AsyncSession
+    ):
         user = await _register_and_verify(client, "cr1@test.dev", "creator1")
         headers = await _headers(client, user["email"])
         project = await _create_project(client, headers, "Mi Proyecto")
@@ -316,15 +370,21 @@ class TestProjectCRUD:
         roles = [m["role"] for m in members.json()]
         assert "owner" in roles, "El creador debe quedar como owner en project_members"
 
-    async def test_viewer_no_puede_crear_proyecto(self, client: AsyncClient, db_session: AsyncSession):
+    async def test_viewer_no_puede_crear_proyecto(
+        self, client: AsyncClient, db_session: AsyncSession
+    ):
         user = await _register_and_verify(client, "vw1@test.dev", "viewer1cr")
         await _set_role(db_session, user["id"], "viewer")
         headers = await _headers(client, user["email"])
 
-        resp = await client.post("/api/v1/projects", json={"name": "No permitido"}, headers=headers)
+        resp = await client.post(
+            "/api/v1/projects", json={"name": "No permitido"}, headers=headers
+        )
         assert resp.status_code == 403, "Viewer no puede crear proyectos"
 
-    async def test_listar_solo_proyectos_del_usuario(self, client: AsyncClient, db_session: AsyncSession):
+    async def test_listar_solo_proyectos_del_usuario(
+        self, client: AsyncClient, db_session: AsyncSession
+    ):
         u1 = await _register_and_verify(client, "lst1@test.dev", "lister1")
         u2 = await _register_and_verify(client, "lst2@test.dev", "lister2")
 
@@ -340,7 +400,9 @@ class TestProjectCRUD:
         assert "Proyecto de U1" in names
         assert "Proyecto de U2" not in names, "U1 no debe ver proyectos de U2"
 
-    async def test_editar_proyecto_solo_owner(self, client: AsyncClient, db_session: AsyncSession):
+    async def test_editar_proyecto_solo_owner(
+        self, client: AsyncClient, db_session: AsyncSession
+    ):
         owner = await _register_and_verify(client, "ed1@test.dev", "editor_own1")
         member = await _register_and_verify(client, "ed2@test.dev", "editor_mem1")
 
@@ -373,7 +435,9 @@ class TestProjectCRUD:
         assert resp2.status_code == 200
         assert resp2.json()["name"] == "Nombre actualizado"
 
-    async def test_soft_delete_proyecto_sin_tareas(self, client: AsyncClient, db_session: AsyncSession):
+    async def test_soft_delete_proyecto_sin_tareas(
+        self, client: AsyncClient, db_session: AsyncSession
+    ):
         """Proyecto sin tareas activas puede eliminarse — soft delete correcto."""
         owner = await _register_and_verify(client, "del1@test.dev", "delowner1")
         headers = await _headers(client, owner["email"])
@@ -385,9 +449,13 @@ class TestProjectCRUD:
         # No debe aparecer en el listado
         lista = await client.get("/api/v1/projects", headers=headers)
         ids = [p["id"] for p in lista.json()["items"]]
-        assert project["id"] not in ids, "Proyecto eliminado no debe aparecer en listado"
+        assert (
+            project["id"] not in ids
+        ), "Proyecto eliminado no debe aparecer en listado"
 
-    async def test_soft_delete_retorna_409_con_tareas_activas(self, client: AsyncClient, db_session: AsyncSession):
+    async def test_soft_delete_retorna_409_con_tareas_activas(
+        self, client: AsyncClient, db_session: AsyncSession
+    ):
         """
         Con Task model de S3 aún no existente, este test se skippea
         automáticamente. Se habilitará en Sprint 3.
@@ -400,10 +468,13 @@ class TestProjectCRUD:
 # E03 — Gestión de miembros (ART-10 · R-0303)
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 class TestMembership:
     """ART-10 · R-0303 — agregar, remover, historial"""
 
-    async def test_agregar_miembro_como_viewer(self, client: AsyncClient, db_session: AsyncSession):
+    async def test_agregar_miembro_como_viewer(
+        self, client: AsyncClient, db_session: AsyncSession
+    ):
         owner = await _register_and_verify(client, "mo1@test.dev", "memown1")
         new_member = await _register_and_verify(client, "mm1@test.dev", "newmem1")
 
@@ -418,7 +489,9 @@ class TestMembership:
         assert resp.status_code == 201, f"agregar miembro falló: {resp.text}"
         assert resp.json()["role"] == "viewer"
 
-    async def test_no_se_puede_agregar_miembro_duplicado(self, client: AsyncClient, db_session: AsyncSession):
+    async def test_no_se_puede_agregar_miembro_duplicado(
+        self, client: AsyncClient, db_session: AsyncSession
+    ):
         owner = await _register_and_verify(client, "mo2@test.dev", "memown2")
         member = await _register_and_verify(client, "mm2@test.dev", "newmem2")
 
@@ -438,7 +511,9 @@ class TestMembership:
         assert resp2.status_code == 409, "Miembro duplicado debe retornar 409"
         assert resp2.json()["error"]["code"] == "MEMBER_ALREADY_EXISTS"
 
-    async def test_remover_miembro_es_soft_delete(self, client: AsyncClient, db_session: AsyncSession):
+    async def test_remover_miembro_es_soft_delete(
+        self, client: AsyncClient, db_session: AsyncSession
+    ):
         """Al remover, el registro persiste en la DB con removed_at IS NOT NULL."""
         owner = await _register_and_verify(client, "mo3@test.dev", "memown3")
         member = await _register_and_verify(client, "mm3@test.dev", "newmem3")
@@ -469,7 +544,9 @@ class TestMembership:
         assert pm is not None, "El registro de membresía debe persistir (soft delete)"
         assert pm.removed_at is not None, "removed_at debe estar establecido"
 
-    async def test_no_se_puede_remover_al_owner(self, client: AsyncClient, db_session: AsyncSession):
+    async def test_no_se_puede_remover_al_owner(
+        self, client: AsyncClient, db_session: AsyncSession
+    ):
         owner = await _register_and_verify(client, "mo4@test.dev", "memown4")
         admin = await _register_and_verify(client, "adm5@test.dev", "admin5sys")
         await _set_role(db_session, admin["id"], "admin")
@@ -485,7 +562,9 @@ class TestMembership:
         assert resp.status_code == 409, "No se puede remover al owner directamente"
         assert resp.json()["error"]["code"] == "CANNOT_REMOVE_OWNER"
 
-    async def test_historial_incluye_miembros_removidos(self, client: AsyncClient, db_session: AsyncSession):
+    async def test_historial_incluye_miembros_removidos(
+        self, client: AsyncClient, db_session: AsyncSession
+    ):
         owner = await _register_and_verify(client, "mo5@test.dev", "memown5")
         member = await _register_and_verify(client, "mm5@test.dev", "newmem5")
 
@@ -515,10 +594,13 @@ class TestMembership:
 # E03 — Transferencia de ownership (ART-11 · R-0304 · DU-02)
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 class TestOwnershipTransfer:
     """ART-11 · R-0304 · DU-02 — transferencia atómica de ownership"""
 
-    async def test_transferir_ownership_exitoso(self, client: AsyncClient, db_session: AsyncSession):
+    async def test_transferir_ownership_exitoso(
+        self, client: AsyncClient, db_session: AsyncSession
+    ):
         owner = await _register_and_verify(client, "ot1@test.dev", "owntr1")
         new_owner = await _register_and_verify(client, "no1@test.dev", "newown1")
 
@@ -550,7 +632,9 @@ class TestOwnershipTransfer:
         pm = result.scalar_one_or_none()
         assert pm is not None and pm.role == "owner", "Nuevo owner debe tener rol owner"
 
-    async def test_owner_anterior_queda_como_editor(self, client: AsyncClient, db_session: AsyncSession):
+    async def test_owner_anterior_queda_como_editor(
+        self, client: AsyncClient, db_session: AsyncSession
+    ):
         """La transferencia es atómica: el owner anterior queda como editor."""
         owner = await _register_and_verify(client, "ot2@test.dev", "owntr2")
         new_owner = await _register_and_verify(client, "no2@test.dev", "newown2")
@@ -577,9 +661,13 @@ class TestOwnershipTransfer:
             )
         )
         pm = result.scalar_one_or_none()
-        assert pm is not None and pm.role == "editor", "Owner anterior debe quedar como editor"
+        assert (
+            pm is not None and pm.role == "editor"
+        ), "Owner anterior debe quedar como editor"
 
-    async def test_no_miembro_no_puede_recibir_ownership(self, client: AsyncClient, db_session: AsyncSession):
+    async def test_no_miembro_no_puede_recibir_ownership(
+        self, client: AsyncClient, db_session: AsyncSession
+    ):
         owner = await _register_and_verify(client, "ot3@test.dev", "owntr3")
         stranger = await _register_and_verify(client, "st3@test.dev", "stranger3")
 
@@ -593,7 +681,9 @@ class TestOwnershipTransfer:
         )
         assert resp.status_code == 404, "No-miembro no puede recibir ownership"
 
-    async def test_no_se_puede_transferir_a_si_mismo(self, client: AsyncClient, db_session: AsyncSession):
+    async def test_no_se_puede_transferir_a_si_mismo(
+        self, client: AsyncClient, db_session: AsyncSession
+    ):
         owner = await _register_and_verify(client, "ot4@test.dev", "owntr4")
         owner_h = await _headers(client, owner["email"])
         project = await _create_project(client, owner_h)
@@ -605,7 +695,9 @@ class TestOwnershipTransfer:
         )
         assert resp.status_code == 409, "No se puede transferir ownership a uno mismo"
 
-    async def test_solo_owner_puede_transferir(self, client: AsyncClient, db_session: AsyncSession):
+    async def test_solo_owner_puede_transferir(
+        self, client: AsyncClient, db_session: AsyncSession
+    ):
         owner = await _register_and_verify(client, "ot5@test.dev", "owntr5")
         editor = await _register_and_verify(client, "ed5@test.dev", "editortr5")
 
@@ -632,13 +724,16 @@ class TestOwnershipTransfer:
 # Seguridad — escalada de privilegios (riesgo crítico del kick-off)
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 class TestPrivilegeEscalation:
     """
     Riesgo crítico identificado en kick-off.
     Un editor no debe poder asignarse a sí mismo como owner.
     """
 
-    async def test_editor_no_puede_asignar_rol_owner(self, client: AsyncClient, db_session: AsyncSession):
+    async def test_editor_no_puede_asignar_rol_owner(
+        self, client: AsyncClient, db_session: AsyncSession
+    ):
         owner = await _register_and_verify(client, "pe1@test.dev", "privesc1")
         editor = await _register_and_verify(client, "pe2@test.dev", "privesc2")
         victim = await _register_and_verify(client, "pe3@test.dev", "privesc3")
@@ -660,10 +755,14 @@ class TestPrivilegeEscalation:
             json={"user_id": victim["id"], "role": "owner"},
             headers=editor_h,
         )
-        assert resp.status_code == 403, "Editor no puede asignar rol owner — escalada de privilegios"
+        assert (
+            resp.status_code == 403
+        ), "Editor no puede asignar rol owner — escalada de privilegios"
         assert resp.json()["error"]["code"] == "FORBIDDEN"
 
-    async def test_viewer_no_puede_agregar_miembros(self, client: AsyncClient, db_session: AsyncSession):
+    async def test_viewer_no_puede_agregar_miembros(
+        self, client: AsyncClient, db_session: AsyncSession
+    ):
         owner = await _register_and_verify(client, "pe4@test.dev", "privesc4")
         viewer = await _register_and_verify(client, "pe5@test.dev", "privesc5")
         victim = await _register_and_verify(client, "pe6@test.dev", "privesc6")
@@ -690,6 +789,7 @@ class TestPrivilegeEscalation:
 # E02 — forgot/reset password (ART-05 · R-0205)
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 class TestForgotResetPassword:
     """
     ART-05 · R-0205 — flujo completo de recuperación de contraseña.
@@ -705,7 +805,9 @@ class TestForgotResetPassword:
         )
         assert resp.status_code == 200, "forgot-password siempre debe retornar 200"
 
-    async def test_forgot_password_email_existente_retorna_200(self, client: AsyncClient):
+    async def test_forgot_password_email_existente_retorna_200(
+        self, client: AsyncClient
+    ):
         user = await _register_and_verify(client, "fp1@test.dev", "fpuser1")
 
         resp = await client.post(
@@ -714,7 +816,9 @@ class TestForgotResetPassword:
         )
         assert resp.status_code == 200
 
-    async def test_flujo_completo_reset_password(self, client: AsyncClient, db_session: AsyncSession):
+    async def test_flujo_completo_reset_password(
+        self, client: AsyncClient, db_session: AsyncSession
+    ):
         """Flujo end-to-end: forgot → capturar token → reset → login con nueva contraseña."""
         user = await _register_and_verify(client, "fp2@test.dev", "fpuser2")
 
@@ -749,7 +853,9 @@ class TestForgotResetPassword:
             "/api/v1/auth/login",
             json={"email": user["email"], "password": "NuevaClave1!"},
         )
-        assert login_resp.status_code == 200, "Login con nueva contraseña debe funcionar"
+        assert (
+            login_resp.status_code == 200
+        ), "Login con nueva contraseña debe funcionar"
 
         # Login con la contraseña antigua debe fallar
         old_login = await client.post(
@@ -758,7 +864,9 @@ class TestForgotResetPassword:
         )
         assert old_login.status_code == 401, "Login con contraseña antigua debe fallar"
 
-    async def test_token_de_reset_es_de_un_solo_uso(self, client: AsyncClient, db_session: AsyncSession):
+    async def test_token_de_reset_es_de_un_solo_uso(
+        self, client: AsyncClient, db_session: AsyncSession
+    ):
         """Segundo uso del mismo token → error (TOKEN_INVALID)."""
         user = await _register_and_verify(client, "fp3@test.dev", "fpuser3")
 
@@ -789,7 +897,9 @@ class TestForgotResetPassword:
         )
         assert resp2.status_code in (400, 401), "Segundo uso del token debe fallar"
 
-    async def test_reset_revoca_refresh_tokens_activos(self, client: AsyncClient, db_session: AsyncSession):
+    async def test_reset_revoca_refresh_tokens_activos(
+        self, client: AsyncClient, db_session: AsyncSession
+    ):
         """Al resetear, todos los refresh tokens del usuario quedan revocados."""
         user = await _register_and_verify(client, "fp4@test.dev", "fpuser4")
 
@@ -821,6 +931,7 @@ class TestForgotResetPassword:
 
         # Intentar usar el refresh token anterior debe fallar
         refresh_resp = await client.post("/api/v1/auth/refresh")
-        assert refresh_resp.status_code in (401, 403), (
-            "Refresh token anterior debe estar revocado después del reset"
-        )
+        assert refresh_resp.status_code in (
+            401,
+            403,
+        ), "Refresh token anterior debe estar revocado después del reset"

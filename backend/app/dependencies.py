@@ -13,6 +13,7 @@ Patrón de uso en routers:
     ):
         ...
 """
+
 import uuid
 from typing import Annotated
 
@@ -31,6 +32,7 @@ logger = structlog.get_logger(__name__)
 
 # ── require_role ──────────────────────────────────────────────────────────────
 
+
 def require_role(*allowed_roles: str):
     """
     Dependency factory que valida el rol global del usuario (users.role).
@@ -45,6 +47,7 @@ def require_role(*allowed_roles: str):
 
     ART-01 · R-0201 · R-0202
     """
+
     async def _check_role(
         current_user: Annotated[User, Depends(get_current_user)],
     ) -> User:
@@ -77,6 +80,7 @@ def require_role(*allowed_roles: str):
 
 
 # ── verify_project_membership ─────────────────────────────────────────────────
+
 
 async def verify_project_membership(
     project_id: Annotated[uuid.UUID, Path(...)],
@@ -151,6 +155,7 @@ async def verify_project_membership(
 
 # ── Helpers de autorización de proyecto ──────────────────────────────────────
 
+
 def require_project_role(*allowed_project_roles: ProjectMemberRole):
     """
     Dependency factory que valida el rol dentro del proyecto.
@@ -162,6 +167,7 @@ def require_project_role(*allowed_project_roles: ProjectMemberRole):
 
     R-0202
     """
+
     async def _check_project_role(
         membership: Annotated[ProjectMember, Depends(verify_project_membership)],
     ) -> ProjectMember:
@@ -178,7 +184,9 @@ def require_project_role(*allowed_project_roles: ProjectMemberRole):
                         ),
                         "details": {
                             "your_project_role": membership.role,
-                            "required_project_roles": [r.value for r in allowed_project_roles],
+                            "required_project_roles": [
+                                r.value for r in allowed_project_roles
+                            ],
                         },
                     }
                 },

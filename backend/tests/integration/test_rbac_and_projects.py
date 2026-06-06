@@ -18,7 +18,7 @@ Cobertura objetivo:
   - forgot/reset password:       flujo completo + token reutilizado + email inexistente
 """
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 from uuid import UUID
 
 import pytest
@@ -26,9 +26,8 @@ from httpx import AsyncClient
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.project import Project, ProjectMember
+from app.models.project import ProjectMember
 from app.models.user import User
-
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Helpers — mismo estilo que test_auth.py

@@ -22,7 +22,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.project import Project, ProjectMember
 from app.models.user import User
 
-
 # ─────────────────────────────────────────────────────────────────────────────
 # Helpers — mismo estilo que test_auth.py
 # ─────────────────────────────────────────────────────────────────────────────
@@ -259,7 +258,7 @@ async def test_miembro_removido_recibe_403(client):
     project = await _create_project(client, owner_h)
 
     # Agregar y luego remover
-    resp_m = await client.get("/api/v1/admin/users", headers=owner_h)
+    await client.get("/api/v1/admin/users", headers=owner_h)
     # Obtener member_id via listado de miembros tras agregarlo
     await client.post(
         f"/api/v1/projects/{project['id']}/members",

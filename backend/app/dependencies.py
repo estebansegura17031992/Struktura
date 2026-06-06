@@ -20,12 +20,11 @@ import structlog
 from fastapi import Depends, HTTPException, Path, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import AppError
+from app.core.security import get_current_user  # noqa: F401 — re-exportado
 from app.database import get_db
 from app.models.project import ProjectMember, ProjectMemberRole
 from app.models.user import User, UserRole  # noqa: F401 — importado para type hints
 from app.repositories.project_repository import ProjectRepository
-from app.core.security import get_current_user  # noqa: F401 — re-exportado
 
 logger = structlog.get_logger(__name__)
 

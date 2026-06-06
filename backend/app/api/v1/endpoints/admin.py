@@ -1,19 +1,20 @@
 """
 Endpoints de administración de usuarios (E02 · ART-04 · R-0204).
- 
+
 GET  /api/v1/admin/users                 — listado paginado de usuarios
 PATCH /api/v1/admin/users/{user_id}/role — cambio de rol con validación último admin
- 
+
 Usa AdminUser (require_role("admin")) de app/api/deps/auth.py.
 Usa log_action de app/services/audit_service.py.
 """
+
 import math
 from uuid import UUID
- 
+
 from fastapi import APIRouter
 from pydantic import BaseModel, field_validator
 from sqlalchemy import func, select, update
- 
+
 from app.api.deps.auth import DB, AdminUser, CurrentUser
 from app.core.exceptions import AppBaseError, UserNotFoundError
 from app.core.logging import get_logger
@@ -21,26 +22,28 @@ from app.models.user import User
 from app.schemas.common import PaginatedResponse
 from app.schemas.user import UserResponse
 from app.services.audit_service import log_action
- 
+
 router = APIRouter(prefix="/admin", tags=["admin"])
 logger = get_logger(__name__)
- 
- 
+
+
 # ── Schemas inline ────────────────────────────────────────────────────────────
- 
+
+
 class ChangeRoleRequest(BaseModel):
     role: str
- 
+
     @field_validator("role")
     @classmethod
     def validate_role(cls, v: str) -> str:
         if v not in {"viewer", "editor", "admin"}:
             raise ValueError("Rol inválido. Permitidos: viewer, editor, admin")
         return v
- 
- 
+
+
 # ── Endpoints ─────────────────────────────────────────────────────────────────
- 
+
+
 @router.get("/users", response_model=PaginatedResponse[UserResponse])
 async def list_users(
     _: AdminUser,
@@ -54,12 +57,12 @@ async def list_users(
     R-0204
     """
     page_size = min(max(page_size, 1), 100)
- 
+
     total_result = await db.execute(
         select(func.count()).select_from(User).where(User.deleted_at.is_(None))
     )
     total = total_result.scalar_one()
- 
+
     result = await db.execute(
         select(User)
         .where(User.deleted_at.is_(None))
@@ -69,7 +72,7 @@ async def list_users(
     )
     users = list(result.scalars().all())
     total_pages = math.ceil(total / page_size) if total > 0 else 1
- 
+
     return PaginatedResponse(
         items=[UserResponse.model_validate(u) for u in users],
         page=page,
@@ -79,8 +82,8 @@ async def list_users(
         next_page=page + 1 if page < total_pages else None,
         previous_page=page - 1 if page > 1 else None,
     )
- 
- 
+
+
 @router.patch("/users/{user_id}/role", response_model=UserResponse)
 async def change_user_role(
     user_id: UUID,
@@ -102,11 +105,11 @@ async def change_user_role(
     target = result.scalar_one_or_none()
     if not target:
         raise UserNotFoundError()
- 
+
     # Sin cambio real — idempotente
     if target.role == body.role:
         return UserResponse.model_validate(target)
- 
+
     # Validar que no se quede el sistema sin admins (CANNOT_REMOVE_LAST_ADMIN)
     if target.role == "admin" and body.role != "admin":
         count_result = await db.execute(
@@ -121,14 +124,12 @@ async def change_user_role(
                 "No se puede degradar al único administrador del sistema.",
                 422,
             )
- 
+
     old_role = target.role
- 
-    await db.execute(
-        update(User).where(User.id == user_id).values(role=body.role)
-    )
+
+    await db.execute(update(User).where(User.id == user_id).values(role=body.role))
     await db.flush()
- 
+
     await log_action(
         db,
         "role_changed",
@@ -141,13 +142,13 @@ async def change_user_role(
             "target_username": target.username,
         },
     )
- 
+
     await db.commit()
- 
+
     # Refrescar el objeto para retornar el estado actualizado
     result = await db.execute(select(User).where(User.id == user_id))
     updated = result.scalar_one()
- 
+
     logger.info(
         "role_changed",
         actor_id=str(current_user.id),
@@ -155,5 +156,5 @@ async def change_user_role(
         old_role=old_role,
         new_role=body.role,
     )
- 
+
     return UserResponse.model_validate(updated)

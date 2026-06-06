@@ -3,23 +3,22 @@ ProjectRepository — queries de DB para proyectos y membresías.
 Sin lógica de negocio — solo acceso a datos.
 Sprint 2 · E03 · R-0301 a R-0307
 """
+
 import uuid
-from datetime import datetime, timezone
- 
+
 from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
- 
-from app.db.base import Base
+
 from app.models.project import Project, ProjectMember
 from app.repositories.base import BaseRepository
- 
- 
+
+
 class ProjectRepository(BaseRepository[Project]):
     def __init__(self, session: AsyncSession):
         super().__init__(Project, session)
- 
+
     # ── Project ───────────────────────────────────────────────────────────────
- 
+
     async def get_active(self, project_id: uuid.UUID) -> Project | None:
         """Obtiene proyecto activo (no soft-deleted)."""
         result = await self.session.execute(
@@ -29,7 +28,7 @@ class ProjectRepository(BaseRepository[Project]):
             )
         )
         return result.scalar_one_or_none()
- 
+
     async def list_by_user(
         self,
         user_id: uuid.UUID,
@@ -57,12 +56,12 @@ class ProjectRepository(BaseRepository[Project]):
             select(func.count()).select_from(base_q.subquery())
         )
         total = total_result.scalar_one()
- 
+
         result = await self.session.execute(
             base_q.offset((page - 1) * page_size).limit(page_size)
         )
         return list(result.scalars().all()), total
- 
+
     async def count_owned_active(self, owner_id: uuid.UUID) -> int:
         """Cuenta proyectos activos donde el usuario es owner (para validar límite)."""
         result = await self.session.execute(
@@ -72,7 +71,7 @@ class ProjectRepository(BaseRepository[Project]):
             )
         )
         return result.scalar_one()
- 
+
     async def get_active_task_names(
         self, project_id: uuid.UUID, limit: int = 10
     ) -> list[str]:
@@ -83,22 +82,25 @@ class ProjectRepository(BaseRepository[Project]):
         """
         try:
             from app.models.task import Task  # noqa: PLC0415
+
             result = await self.session.execute(
-                select(Task.title).where(
+                select(Task.title)
+                .where(
                     and_(
                         Task.project_id == project_id,
                         Task.status != "completo",
                         Task.deleted_at.is_(None),
                     )
-                ).limit(limit)
+                )
+                .limit(limit)
             )
             return list(result.scalars().all())
         except ImportError:
             # Task model no existe todavía (Sprint 3) — no hay tareas activas
             return []
- 
+
     # ── ProjectMember ─────────────────────────────────────────────────────────
- 
+
     async def get_active_membership(
         self,
         project_id: uuid.UUID,
@@ -116,10 +118,8 @@ class ProjectRepository(BaseRepository[Project]):
             )
         )
         return result.scalar_one_or_none()
- 
-    async def list_active_members(
-        self, project_id: uuid.UUID
-    ) -> list[ProjectMember]:
+
+    async def list_active_members(self, project_id: uuid.UUID) -> list[ProjectMember]:
         result = await self.session.execute(
             select(ProjectMember)
             .where(
@@ -129,7 +129,7 @@ class ProjectRepository(BaseRepository[Project]):
             .order_by(ProjectMember.joined_at.asc())
         )
         return list(result.scalars().all())
- 
+
     async def list_member_history(
         self,
         project_id: uuid.UUID,
@@ -150,10 +150,8 @@ class ProjectRepository(BaseRepository[Project]):
             base_q.offset((page - 1) * page_size).limit(page_size)
         )
         return list(result.scalars().all()), total
- 
-    async def get_owner_membership(
-        self, project_id: uuid.UUID
-    ) -> ProjectMember | None:
+
+    async def get_owner_membership(self, project_id: uuid.UUID) -> ProjectMember | None:
         result = await self.session.execute(
             select(ProjectMember).where(
                 ProjectMember.project_id == project_id,
@@ -162,4 +160,3 @@ class ProjectRepository(BaseRepository[Project]):
             )
         )
         return result.scalar_one_or_none()
- 

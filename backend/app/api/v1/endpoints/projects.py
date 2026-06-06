@@ -1,25 +1,36 @@
 """
 Endpoints de gestión de proyectos y membresía (E03 · R-0301 a R-0307).
 
-Sprint 2 · ART-09 a ART-12
+Todos los endpoints de proyecto requieren membresía activa o rol admin,
+validado mediante get_project_member() dependency.
 
-FIXES aplicados:
-  1. get_project_member: usar get_current_user directamente en vez de CurrentUser.__class__
-  2. Códigos de error: InsufficientPermissionsError usa "INSUFFICIENT_PERMISSIONS"
+Endpoints:
+  POST   /projects                              — crear proyecto
+  GET    /projects                              — listar proyectos del usuario
+  PATCH  /projects/{project_id}                 — editar proyecto
+  DELETE /projects/{project_id}                 — soft delete
+  GET    /projects/{project_id}/members         — listar miembros activos
+  POST   /projects/{project_id}/members         — agregar miembro
+  DELETE /projects/{project_id}/members/{uid}   — remover miembro
+  GET    /projects/{project_id}/members/history — historial de membresías
+  POST   /projects/{project_id}/transfer-ownership — transferir ownership
 """
+
 import math
+from datetime import UTC
 from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field, field_validator
-from sqlalchemy import update as sa_update
 from sqlalchemy.ext.asyncio import AsyncSession
-from datetime import datetime, timezone
 
-from app.api.deps.auth import DB, CurrentUser, get_current_user  # ← añadir get_current_user
+from app.api.deps.auth import DB, CurrentUser, get_current_user
 from app.api.deps.db import get_db
-from app.core.exceptions import AppBaseError, InsufficientPermissionsError, UserNotFoundError
+from app.core.exceptions import (
+    AppBaseError,
+    InsufficientPermissionsError,
+)
 from app.core.logging import get_logger
 from app.models.project import Project, ProjectMember
 from app.models.user import User
@@ -32,6 +43,7 @@ logger = get_logger(__name__)
 
 
 # ── Schemas inline ────────────────────────────────────────────────────────────
+
 
 class ProjectCreateRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=100)
@@ -110,29 +122,31 @@ class MemberResponse(BaseModel):
         )
 
 
-# ── Dependency: membresía activa del usuario en el proyecto ───────────────────
+# ── Dependency: obtener membresía activa del usuario en el proyecto ───────────
+
 
 async def get_project_member(
     project_id: UUID,
-    # FIX: usar get_current_user directamente — CurrentUser.__class__ no es resolvible por FastAPI
     current_user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> ProjectMember:
     """
     Valida que el usuario tiene membresía activa en el proyecto.
     Admins del sistema tienen acceso aunque no sean miembros explícitos.
-    Retorna InsufficientPermissionsError (403) si no hay membresía.
-    Retorna AppBaseError NOT_FOUND (404) si el proyecto no existe.
+    Retorna 403 (no 404) si no hay membresía — no revela existencia del proyecto.
     R-0202
     """
+    # Importamos aquí para evitar circular import
     repo = ProjectRepository(db)
 
+    # Verificar que el proyecto existe y no está eliminado
     project = await repo.get_active(project_id)
     if not project:
         raise AppBaseError("NOT_FOUND", "Proyecto no encontrado.", 404)
 
     # Admins del sistema acceden a cualquier proyecto
     if current_user.role == "admin":
+        # Buscar membresía real o devolver membresía virtual con rol editor
         membership = await repo.get_active_membership(project_id, current_user.id)
         if membership:
             return membership
@@ -145,6 +159,7 @@ async def get_project_member(
         virtual.joined_at = project.created_at
         return virtual
 
+    # Usuarios normales requieren membresía activa
     membership = await repo.get_active_membership(project_id, current_user.id)
     if not membership:
         raise InsufficientPermissionsError()
@@ -152,10 +167,12 @@ async def get_project_member(
     return membership
 
 
+# Tipo anotado para uso limpio en endpoints
 ProjectMembership = Annotated[ProjectMember, Depends(get_project_member)]
 
 
 # ── CRUD proyectos ────────────────────────────────────────────────────────────
+
 
 @router.post("", response_model=ProjectResponse, status_code=201)
 async def create_project(
@@ -163,6 +180,12 @@ async def create_project(
     current_user: CurrentUser,
     db: DB,
 ):
+    """
+    Crea un proyecto. Solo editors y admins pueden crear.
+    El creador queda automáticamente como owner en project_members.
+    Valida límite de proyectos desde system_settings (default 20).
+    R-0301
+    """
     service = ProjectService(db)
     project = await service.create(body.name, body.description, current_user)
     return ProjectResponse.from_orm(project)
@@ -175,6 +198,7 @@ async def list_projects(
     page: int = 1,
     page_size: int = 20,
 ):
+    """Lista proyectos donde el usuario es miembro activo. R-0301"""
     page_size = min(max(page_size, 1), 100)
     repo = ProjectRepository(db)
     items, total = await repo.list_by_user(current_user.id, page, page_size)
@@ -198,6 +222,7 @@ async def update_project(
     membership: ProjectMembership,
     db: DB,
 ):
+    """Solo owner del proyecto o admin del sistema puede editar. R-0301"""
     if membership.role != "owner" and current_user.role != "admin":
         raise InsufficientPermissionsError()
 
@@ -213,12 +238,18 @@ async def update_project(
         updates["description"] = body.description
 
     if updates:
-        updates["updated_at"] = datetime.now(timezone.utc)
+        from datetime import datetime  # noqa: PLC0415
+
+        from sqlalchemy import update as sa_update  # noqa: PLC0415
+
+        updates["updated_at"] = datetime.now(UTC)
         await db.execute(
             sa_update(Project).where(Project.id == project_id).values(**updates)
         )
         await db.commit()
         project = await repo.get_active(project_id)
+        if not project:
+            raise AppBaseError("NOT_FOUND", "Proyecto no encontrado.", 404)
 
     return ProjectResponse.from_orm(project)
 
@@ -230,6 +261,11 @@ async def delete_project(
     membership: ProjectMembership,
     db: DB,
 ):
+    """
+    Soft delete. Solo owner o admin puede eliminar.
+    Rechaza con 409 si tiene tareas activas — lista las primeras 10.
+    R-0302
+    """
     if membership.role != "owner" and current_user.role != "admin":
         raise InsufficientPermissionsError()
 
@@ -239,12 +275,14 @@ async def delete_project(
 
 # ── Gestión de miembros ───────────────────────────────────────────────────────
 
+
 @router.get("/{project_id}/members", response_model=list[MemberResponse])
 async def list_members(
     project_id: UUID,
     membership: ProjectMembership,
     db: DB,
 ):
+    """Lista miembros activos del proyecto. R-0303"""
     repo = ProjectRepository(db)
     members = await repo.list_active_members(project_id)
     return [MemberResponse.from_orm(m) for m in members]
@@ -258,6 +296,11 @@ async def add_member(
     membership: ProjectMembership,
     db: DB,
 ):
+    """
+    Agrega miembro. Solo owner o editor puede agregar.
+    Un editor NO puede asignar rol owner — previene escalada de privilegios.
+    R-0303
+    """
     service = ProjectService(db)
     new_member = await service.add_member(
         project_id, body.user_id, body.role, current_user, membership
@@ -273,12 +316,17 @@ async def remove_member(
     membership: ProjectMembership,
     db: DB,
 ):
+    """
+    Soft delete de membresía. El owner no puede ser removido directamente.
+    R-0303
+    """
     service = ProjectService(db)
     await service.remove_member(project_id, user_id, current_user, membership)
 
 
-@router.get("/{project_id}/members/history",
-            response_model=PaginatedResponse[MemberResponse])
+@router.get(
+    "/{project_id}/members/history", response_model=PaginatedResponse[MemberResponse]
+)
 async def member_history(
     project_id: UUID,
     current_user: CurrentUser,
@@ -287,6 +335,10 @@ async def member_history(
     page: int = 1,
     page_size: int = 20,
 ):
+    """
+    Historial completo de membresías (activas + removidas).
+    Solo accesible para owner o admin. R-0306
+    """
     if membership.role not in ("owner", "editor") and current_user.role != "admin":
         raise InsufficientPermissionsError()
 
@@ -313,6 +365,11 @@ async def transfer_ownership(
     membership: ProjectMembership,
     db: DB,
 ):
+    """
+    Transferencia atómica de ownership. Solo el owner actual puede transferir.
+    El nuevo owner debe ser miembro activo. Registrado en audit_logs.
+    DU-02 · R-0304
+    """
     service = ProjectService(db)
     await service.transfer_ownership(
         project_id, body.new_owner_id, current_user, membership

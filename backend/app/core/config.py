@@ -20,9 +20,6 @@ class Settings(BaseSettings):
     APP_NAME: str = "Kanban MVP"
     APP_VERSION: str = "0.1.0"
 
-    #Fronend
-    FRONTEND_URL: str = "http://localhost:5173"
-    
     # Database
     DATABASE_URL: str = ""
     DATABASE_URL_SYNC: str = ""

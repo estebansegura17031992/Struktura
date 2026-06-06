@@ -1,8 +1,8 @@
 """Modelos SQLAlchemy — proyectos, miembros e invitaciones (E03)."""
- 
+
 import uuid
 from datetime import datetime
- 
+
 from sqlalchemy import (
     TIMESTAMP,
     CheckConstraint,
@@ -13,9 +13,9 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import ENUM, UUID
 from sqlalchemy.orm import Mapped, mapped_column
- 
+
 from app.db.base import Base
- 
+
 # create_type=False — los ENUMs ya existen en la DB (creados por Alembic)
 MemberRoleEnum = ENUM(
     "owner", "editor", "viewer", name="member_role", create_type=False
@@ -28,14 +28,14 @@ InvitationStatusEnum = ENUM(
     name="invitation_status",
     create_type=False,
 )
- 
- 
+
+
 class Project(Base):
     __tablename__ = "projects"
     __table_args__ = (
         CheckConstraint("LENGTH(TRIM(name)) > 0", name="projects_name_not_empty"),
     )
- 
+
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
     )
@@ -53,14 +53,14 @@ class Project(Base):
     deleted_at: Mapped[datetime | None] = mapped_column(
         TIMESTAMP(timezone=True), nullable=True
     )
- 
- 
+
+
 class ProjectMember(Base):
     __tablename__ = "project_members"
     __table_args__ = (
         UniqueConstraint("project_id", "user_id", name="pm_user_project_active_uk"),
     )
- 
+
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
     )
@@ -81,12 +81,12 @@ class ProjectMember(Base):
         TIMESTAMP(timezone=True), nullable=True
     )
     removal_reason: Mapped[str | None] = mapped_column(String(255), nullable=True)
- 
- 
+
+
 class ProjectInvitation(Base):
     __tablename__ = "project_invitations"
     __table_args__ = (CheckConstraint("role <> 'owner'", name="pi_role_not_owner"),)
- 
+
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
     )

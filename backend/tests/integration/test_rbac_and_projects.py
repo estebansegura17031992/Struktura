@@ -68,7 +68,7 @@ async def _register_and_verify(
     assert resp2.status_code == 200, f"verify falló: {resp2.text}"
 
     return {
-        "id": resp.json()["id"],
+        "id": resp.json()["user_id"],
         "email": email,
         "username": username,
         "password": password,

@@ -11,6 +11,8 @@ import VerifyEmailPage     from "@/pages/auth/VerifyEmailPage";
 import ForgotPasswordPage  from "@/pages/auth/ForgotPasswordPage";
 import ResetPasswordPage   from "@/pages/auth/ResetPasswordPage";
 import ProfilePage         from "@/pages/profile/ProfilePage";
+import AdminRoute       from "./AdminRoute";
+import AdminUsersPage   from "@/pages/admin/AdminUsersPage";
  
 const Placeholder = ({ label }) => (
   <div className="min-h-screen bg-background flex items-center justify-center">
@@ -41,6 +43,10 @@ const AppRouter = () => (
  
     <Route path="/"  element={<Navigate to="/login" replace />} />
     <Route path="*"  element={<Navigate to="/login" replace />} />
+
+    <Route element={<AdminRoute />}>
+      <Route path="/admin/users" element={<AdminUsersPage />} />
+    </Route>
   </Routes>
 );
  

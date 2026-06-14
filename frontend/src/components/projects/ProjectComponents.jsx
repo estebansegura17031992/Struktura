@@ -14,7 +14,6 @@
  *   MemberAvatarStack   — stack de avatares de miembros
  */
 import React, { useState, useEffect, useRef } from "react";
-import { useNavigate } from "react-router-dom";
 
 // ── Constantes de rol ──────────────────────────────────────────────────────────
 
@@ -107,7 +106,6 @@ function ProjectIcon({ name }) {
 function ActionsMenu({ project, myRole, onEdit, onDelete }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
-  const navigate  = useNavigate();
   const canEdit   = ["owner", "editor"].includes(myRole) || myRole === "admin";
   const canDelete = myRole === "owner" || myRole === "admin";
 
@@ -132,7 +130,7 @@ function ActionsMenu({ project, myRole, onEdit, onDelete }) {
           style={{ background: "#1e2023", border: "1px solid #2D3135" }}
         >
           <button
-            onClick={(e) => { e.stopPropagation(); setOpen(false); navigate(`/projects/${project.id}/members`); }}
+            onClick={(e) => { e.stopPropagation(); setOpen(false); /* navigate */ }}
             className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-on-surface-variant hover:text-on-surface hover:bg-surface-variant/40 transition-colors"
           >
             <span className="material-symbols-outlined text-[16px]">open_in_new</span>
@@ -148,7 +146,7 @@ function ActionsMenu({ project, myRole, onEdit, onDelete }) {
             </button>
           )}
           <button
-            onClick={(e) => { e.stopPropagation(); setOpen(false); navigate(`/projects/${project.id}/members`); }}
+            onClick={(e) => { e.stopPropagation(); setOpen(false); /* navigate to members */ }}
             className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-on-surface-variant hover:text-on-surface hover:bg-surface-variant/40 transition-colors"
           >
             <span className="material-symbols-outlined text-[16px]">group</span>

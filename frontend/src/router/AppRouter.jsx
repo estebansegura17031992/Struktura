@@ -14,7 +14,6 @@ import ProfilePage         from "@/pages/profile/ProfilePage";
 import AdminRoute       from "./AdminRoute";
 import AdminUsersPage   from "@/pages/admin/AdminUsersPage";
 import ProjectsPage from "@/pages/projects/ProjectsPage";
-import ProjectMembersPage from "@/pages/projects/ProjectMembersPage";
 
 const Placeholder = ({ label }) => (
   <div className="min-h-screen bg-background flex items-center justify-center">
@@ -50,6 +49,10 @@ const AppRouter = () => (
 
     <Route element={<AdminRoute />}>
       <Route path="/admin/users" element={<AdminUsersPage />} />
+    </Route>
+
+    <Route element={<PrivateRoute />}>
+      <Route path="/projects" element={<ProjectsPage />} />
     </Route>
   </Routes>
 );

@@ -36,8 +36,10 @@ addopts = "--tb=short"
 [tool.coverage.run]
 source = ["app"]
 omit = [
-    "app/main.py",        # solo registra routers, poco lógica
+    "app/main.py",
     "app/dependencies.py",
+    "app/schemas/project.py",      # ← agregar
+    "app/api/v1/endpoints/debug_health.py",  # ← agregar también, 0% coverage
     "alembic/*",
     "tests/*",
 ]

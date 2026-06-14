@@ -11,7 +11,10 @@ import VerifyEmailPage     from "@/pages/auth/VerifyEmailPage";
 import ForgotPasswordPage  from "@/pages/auth/ForgotPasswordPage";
 import ResetPasswordPage   from "@/pages/auth/ResetPasswordPage";
 import ProfilePage         from "@/pages/profile/ProfilePage";
- 
+import AdminRoute       from "./AdminRoute";
+import AdminUsersPage   from "@/pages/admin/AdminUsersPage";
+import ProjectsPage from "@/pages/projects/ProjectsPage";
+
 const Placeholder = ({ label }) => (
   <div className="min-h-screen bg-background flex items-center justify-center">
     <div className="bg-surface-container border border-outline-variant/30 rounded-xl p-8 text-center max-w-sm">
@@ -41,6 +44,14 @@ const AppRouter = () => (
  
     <Route path="/"  element={<Navigate to="/login" replace />} />
     <Route path="*"  element={<Navigate to="/login" replace />} />
+
+    <Route element={<AdminRoute />}>
+      <Route path="/admin/users" element={<AdminUsersPage />} />
+    </Route>
+
+    <Route element={<PrivateRoute />}>
+      <Route path="/projects" element={<ProjectsPage />} />
+    </Route>
   </Routes>
 );
  

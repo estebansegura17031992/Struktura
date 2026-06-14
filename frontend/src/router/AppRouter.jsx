@@ -40,6 +40,8 @@ const AppRouter = () => (
     <Route element={<PrivateRoute />}>
       <Route path="/dashboard" element={<Placeholder label="Dashboard — Sprint 3" />} />
       <Route path="/profile"   element={<ProfilePage />} />
+      <Route path="/projects" element={<ProjectsPage />} />
+      <Route path="/projects/:projectId/members" element={<ProjectMembersPage />} />
     </Route>
  
     <Route path="/"  element={<Navigate to="/login" replace />} />

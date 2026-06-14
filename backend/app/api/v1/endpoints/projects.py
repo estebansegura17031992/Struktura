@@ -13,6 +13,7 @@ Endpoints:
   GET    /projects/{project_id}/members/history – historial de membresías
   POST   /projects/{project_id}/transfer-ownership – transferir ownership
 """
+
 import math
 from datetime import UTC
 from typing import Annotated
@@ -49,7 +50,10 @@ class ProjectCreateRequest(BaseModel):
 
     model_config = {
         "json_schema_extra": {
-            "example": {"name": "Rediseño UI Alpha", "description": "Optimización del sistema de diseño core"}
+            "example": {
+                "name": "Rediseño UI Alpha",
+                "description": "Optimización del sistema de diseño core",
+            }
         }
     }
 
@@ -67,7 +71,10 @@ class ProjectUpdateRequest(BaseModel):
 
     model_config = {
         "json_schema_extra": {
-            "example": {"name": "Rediseño UI Alpha v2", "description": "Descripción actualizada"}
+            "example": {
+                "name": "Rediseño UI Alpha v2",
+                "description": "Descripción actualizada",
+            }
         }
     }
 
@@ -78,7 +85,10 @@ class AddMemberRequest(BaseModel):
 
     model_config = {
         "json_schema_extra": {
-            "example": {"user_id": "550e8400-e29b-41d4-a716-446655440000", "role": "editor"}
+            "example": {
+                "user_id": "550e8400-e29b-41d4-a716-446655440000",
+                "role": "editor",
+            }
         }
     }
 
@@ -107,7 +117,7 @@ class ProjectResponse(BaseModel):
     owner_id: UUID
     created_at: str
     updated_at: str
-    my_role: str | None = None       # rol del usuario autenticado en este proyecto
+    my_role: str | None = None  # rol del usuario autenticado en este proyecto
     member_count: int | None = None  # calculado en list_projects
 
     model_config = {"from_attributes": True}
@@ -161,11 +171,14 @@ class MemberResponse(BaseModel):
                 id=str(user.id),  # type: ignore[attr-defined]
                 username=user.username,  # type: ignore[attr-defined]
                 full_name=user.full_name,  # type: ignore[attr-defined]
-            ) if user else None,
+            )
+            if user
+            else None,
         )
 
 
 # ── Dependency: obtener membresía activa del usuario en el proyecto ────────────
+
 
 async def get_project_member(
     project_id: UUID,
@@ -335,6 +348,7 @@ async def update_project(
 
     if updates:
         from datetime import datetime  # noqa: PLC0415
+
         from sqlalchemy import update as sa_update  # noqa: PLC0415
 
         updates["updated_at"] = datetime.now(UTC)
@@ -355,7 +369,9 @@ async def update_project(
     responses={
         403: {"description": "Sin permisos — solo owner o admin puede eliminar"},
         404: {"description": "Proyecto no encontrado"},
-        409: {"description": "PROJECT_HAS_ACTIVE_TASKS — el proyecto tiene tareas activas"},
+        409: {
+            "description": "PROJECT_HAS_ACTIVE_TASKS — el proyecto tiene tareas activas"
+        },
     },
 )
 async def delete_project(
@@ -441,7 +457,9 @@ async def add_member(
     responses={
         403: {"description": "Sin permisos — solo owner o editor puede remover"},
         404: {"description": "Miembro no encontrado"},
-        409: {"description": "CANNOT_REMOVE_OWNER — no se puede remover al owner directamente"},
+        409: {
+            "description": "CANNOT_REMOVE_OWNER — no se puede remover al owner directamente"
+        },
     },
 )
 async def remove_member(
@@ -502,8 +520,12 @@ async def member_history(
     response_model=MessageResponse,
     responses={
         403: {"description": "Sin permisos — solo el owner actual puede transferir"},
-        404: {"description": "NOT_FOUND — el nuevo owner no es miembro activo del proyecto"},
-        409: {"description": "INVALID_OPERATION — no puedes transferirte el ownership a ti mismo"},
+        404: {
+            "description": "NOT_FOUND — el nuevo owner no es miembro activo del proyecto"
+        },
+        409: {
+            "description": "INVALID_OPERATION — no puedes transferirte el ownership a ti mismo"
+        },
     },
 )
 async def transfer_ownership(

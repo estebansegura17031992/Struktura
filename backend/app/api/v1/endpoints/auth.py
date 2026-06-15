@@ -37,19 +37,26 @@ COOKIE_MAX_AGE = settings.JWT_REFRESH_TOKEN_EXPIRE_DAYS * 24 * 3600
 
 
 def _set_refresh_cookie(response: Response, token: str) -> None:
+    is_deployed = settings.ENVIRONMENT in ("production", "staging")
     response.set_cookie(
         key="refresh_token",
         value=token,
         max_age=COOKIE_MAX_AGE,
         httponly=True,
-        secure=settings.is_production,
-        samesite="lax",
+        secure=is_deployed,
+        samesite="none" if is_deployed else "lax",
         path="/",
     )
 
 
 def _clear_refresh_cookie(response: Response) -> None:
-    response.delete_cookie(key="refresh_token", path="/")
+    is_deployed = settings.ENVIRONMENT in ("production", "staging")
+    response.delete_cookie(
+        key="refresh_token",
+        path="/",
+        secure=is_deployed,
+        samesite="none" if is_deployed else "lax",
+    )
 
 
 @router.post("/register", response_model=RegisterResponse, status_code=201)

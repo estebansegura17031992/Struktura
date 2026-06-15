@@ -6,7 +6,8 @@
  * Exporta:
  *   ProjectCard         — tarjeta en vista grid
  *   ProjectRow          — fila en vista lista
- *   ProjectSkeleton     — skeleton grid/list
+ *   ProjectCardSkeleton — skeleton grid
+ *   ProjectRowSkeleton  — skeleton list
  *   ProjectEmptyState   — estado vacío
  *   ProjectFormModal    — modal crear / editar
  *   DeleteConfirmModal  — modal confirmación eliminación
@@ -14,6 +15,7 @@
  *   MemberAvatarStack   — stack de avatares de miembros
  */
 import React, { useState, useEffect, useRef } from "react";
+import { useNavigate } from "react-router-dom";
 
 // ── Constantes de rol ──────────────────────────────────────────────────────────
 
@@ -78,7 +80,7 @@ export function MemberAvatarStack({ count = 0 }) {
   );
 }
 
-// ── ProjectInitialIcon ─────────────────────────────────────────────────────────
+// ── ProjectIcon ────────────────────────────────────────────────────────────────
 
 function ProjectIcon({ name }) {
   const colors = [
@@ -103,10 +105,10 @@ function ProjectIcon({ name }) {
 
 // ── ActionsMenu ────────────────────────────────────────────────────────────────
 
-function ActionsMenu({ project, myRole, onEdit, onDelete }) {
+function ActionsMenu({ project, myRole, onEdit, onDelete, onMembers, onView }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
-  const canEdit   = ["owner", "editor"].includes(myRole) || myRole === "admin";
+  const canEdit   = ["owner", "editor", "admin"].includes(myRole);
   const canDelete = myRole === "owner" || myRole === "admin";
 
   useEffect(() => {
@@ -124,18 +126,22 @@ function ActionsMenu({ project, myRole, onEdit, onDelete }) {
       >
         <span className="material-symbols-outlined text-[20px]">more_vert</span>
       </button>
+
       {open && (
         <div
           className="absolute right-0 top-full mt-1 w-44 rounded-xl py-1 z-30 shadow-xl"
           style={{ background: "#1e2023", border: "1px solid #2D3135" }}
         >
+          {/* Ver proyecto */}
           <button
-            onClick={(e) => { e.stopPropagation(); setOpen(false); /* navigate */ }}
+            onClick={(e) => { e.stopPropagation(); setOpen(false); onView(project); }}
             className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-on-surface-variant hover:text-on-surface hover:bg-surface-variant/40 transition-colors"
           >
             <span className="material-symbols-outlined text-[16px]">open_in_new</span>
             Ver proyecto
           </button>
+
+          {/* Editar */}
           {canEdit && (
             <button
               onClick={(e) => { e.stopPropagation(); setOpen(false); onEdit(project); }}
@@ -145,13 +151,17 @@ function ActionsMenu({ project, myRole, onEdit, onDelete }) {
               Editar
             </button>
           )}
+
+          {/* Miembros */}
           <button
-            onClick={(e) => { e.stopPropagation(); setOpen(false); /* navigate to members */ }}
+            onClick={(e) => { e.stopPropagation(); setOpen(false); onMembers(project); }}
             className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-on-surface-variant hover:text-on-surface hover:bg-surface-variant/40 transition-colors"
           >
             <span className="material-symbols-outlined text-[16px]">group</span>
             Miembros
           </button>
+
+          {/* Eliminar */}
           {canDelete && (
             <>
               <div className="my-1 border-t" style={{ borderColor: "#2D3135" }} />
@@ -172,7 +182,7 @@ function ActionsMenu({ project, myRole, onEdit, onDelete }) {
 
 // ── ProjectCard (vista grid) ───────────────────────────────────────────────────
 
-export function ProjectCard({ project, onEdit, onDelete }) {
+export function ProjectCard({ project, onEdit, onDelete, onMembers, onView }) {
   const myRole = project.my_role ?? "viewer";
   return (
     <div
@@ -184,6 +194,7 @@ export function ProjectCard({ project, onEdit, onDelete }) {
       }}
       onMouseEnter={e => e.currentTarget.style.borderColor = "#4cd7f2"}
       onMouseLeave={e => e.currentTarget.style.borderColor = "#2D3135"}
+      onClick={() => onView(project)}
     >
       {/* Header */}
       <div className="flex items-start justify-between gap-2">
@@ -191,7 +202,14 @@ export function ProjectCard({ project, onEdit, onDelete }) {
           <ProjectIcon name={project.name} />
           <RoleChip role={myRole} />
         </div>
-        <ActionsMenu project={project} myRole={myRole} onEdit={onEdit} onDelete={onDelete} />
+        <ActionsMenu
+          project={project}
+          myRole={myRole}
+          onEdit={onEdit}
+          onDelete={onDelete}
+          onMembers={onMembers}
+          onView={onView}
+        />
       </div>
 
       {/* Nombre y descripción */}
@@ -245,12 +263,13 @@ export function CreateProjectCard({ onClick }) {
 
 // ── ProjectRow (vista lista) ───────────────────────────────────────────────────
 
-export function ProjectRow({ project, onEdit, onDelete }) {
+export function ProjectRow({ project, onEdit, onDelete, onMembers, onView }) {
   const myRole = project.my_role ?? "viewer";
   return (
     <tr
       className="group border-b transition-colors cursor-pointer hover:bg-surface-container"
       style={{ borderColor: "#2D3135" }}
+      onClick={() => onView(project)}
     >
       {/* Proyecto */}
       <td className="px-6 py-4">
@@ -279,9 +298,16 @@ export function ProjectRow({ project, onEdit, onDelete }) {
       <td className="px-6 py-4 text-on-surface-variant text-sm whitespace-nowrap">
         {formatRelative(project.created_at)}
       </td>
-      {/* Acciones */}
-      <td className="px-6 py-4 text-right">
-        <ActionsMenu project={project} myRole={myRole} onEdit={onEdit} onDelete={onDelete} />
+      {/* Acciones — stopPropagation para no disparar onView de la fila */}
+      <td className="px-6 py-4 text-right" onClick={e => e.stopPropagation()}>
+        <ActionsMenu
+          project={project}
+          myRole={myRole}
+          onEdit={onEdit}
+          onDelete={onDelete}
+          onMembers={onMembers}
+          onView={onView}
+        />
       </td>
     </tr>
   );
@@ -306,7 +332,9 @@ export function ProjectCardSkeleton() {
       </div>
       <div className="flex items-center justify-between pt-1 border-t" style={{ borderColor: "#2D3135" }}>
         <div className="flex -space-x-2">
-          {[1, 2].map(i => <div key={i} className="w-7 h-7 rounded-full bg-surface-variant/50" style={{ marginLeft: i > 1 ? -8 : 0 }} />)}
+          {[1, 2].map(i => (
+            <div key={i} className="w-7 h-7 rounded-full bg-surface-variant/50" style={{ marginLeft: i > 1 ? -8 : 0 }} />
+          ))}
         </div>
         <div className="h-3 w-16 rounded-full bg-surface-variant/40" />
       </div>
@@ -353,53 +381,38 @@ export function ProjectEmptyState({ onCreateClick }) {
   );
 }
 
-// ── ProjectFormDrawer — Crear y Editar ────────────────────────────────────────
-//
-// CREAR:  imagen decorativa abajo · bloque info owner · botones: Cancelar cyan / Crear naranja
-// EDITAR: imagen arriba (preview) · campos Estado+Prioridad · zona de peligro ·
-//         botones: Cancelar oscuro / Guardar naranja · icono editar en título
-//
-// Props:
-//   mode       "create" | "edit"
-//   project    objeto proyecto (requerido en modo edit)
-//   loading    bool
-//   error      string | null
-//   onSubmit   ({ name, description, status?, priority? }) => void
-//   onClose    () => void
-//   onDelete   () => void  (solo modo edit — abre confirmación eliminación)
+// ── ProjectFormModal — Crear y Editar ─────────────────────────────────────────
 
 const STATUS_OPTIONS = [
-  { value: "active",      label: "En progreso", dot: "#4cd7f2" },
-  { value: "paused",      label: "En pausa",    dot: "#f6ba8b" },
-  { value: "completed",   label: "Completado",  dot: "#4ade80" },
-  { value: "archived",    label: "Archivado",   dot: "#94a3b8" },
+  { value: "active",    label: "En progreso", dot: "#4cd7f2" },
+  { value: "paused",    label: "En pausa",    dot: "#f6ba8b" },
+  { value: "completed", label: "Completado",  dot: "#4ade80" },
+  { value: "archived",  label: "Archivado",   dot: "#94a3b8" },
 ];
 
 const PRIORITY_OPTIONS = [
-  { value: "high",   label: "Alta",   icon: "!", color: "#f6ba8b" },
-  { value: "medium", label: "Media",  icon: "~", color: "#4cd7f2" },
-  { value: "low",    label: "Baja",   icon: "↓", color: "#94a3b8" },
+  { value: "high",   label: "Alta",  icon: "!", color: "#f6ba8b" },
+  { value: "medium", label: "Media", icon: "~", color: "#4cd7f2" },
+  { value: "low",    label: "Baja",  icon: "↓", color: "#94a3b8" },
 ];
 
 export function ProjectFormModal({ mode = "create", project = null, loading, error, onSubmit, onClose, onDelete }) {
-  const [name, setName]             = useState(project?.name ?? "");
+  const [name, setName]               = useState(project?.name ?? "");
   const [description, setDescription] = useState(project?.description ?? "");
-  const [status, setStatus]         = useState(project?.status ?? "active");
-  const [priority, setPriority]     = useState(project?.priority ?? "high");
-  const [nameError, setNameError]   = useState("");
-  const [open, setOpen]             = useState(false);
+  const [status, setStatus]           = useState(project?.status ?? "active");
+  const [priority, setPriority]       = useState(project?.priority ?? "high");
+  const [nameError, setNameError]     = useState("");
+  const [open, setOpen]               = useState(false);
   const nameRef = useRef(null);
 
   const isCreate = mode === "create";
 
-  // Animación slide-in
   useEffect(() => {
     const t = requestAnimationFrame(() => setOpen(true));
     return () => cancelAnimationFrame(t);
   }, []);
 
   useEffect(() => {
-    // En edición el foco va al primer campo tras la imagen
     setTimeout(() => nameRef.current?.focus(), 320);
   }, []);
 
@@ -430,7 +443,7 @@ export function ProjectFormModal({ mode = "create", project = null, loading, err
     });
   };
 
-  const currentStatus   = STATUS_OPTIONS.find(s => s.value === status)   ?? STATUS_OPTIONS[0];
+  const currentStatus   = STATUS_OPTIONS.find(s => s.value === status)    ?? STATUS_OPTIONS[0];
   const currentPriority = PRIORITY_OPTIONS.find(p => p.value === priority) ?? PRIORITY_OPTIONS[0];
 
   return (
@@ -453,7 +466,7 @@ export function ProjectFormModal({ mode = "create", project = null, loading, err
           transform: open ? "translateX(0)" : "translateX(100%)",
         }}
       >
-        {/* ── Header ──────────────────────────────────────────────────── */}
+        {/* Header */}
         <div
           className="flex items-center justify-between px-6 py-4 flex-shrink-0 border-b"
           style={{ borderColor: "#2D3135" }}
@@ -479,18 +492,17 @@ export function ProjectFormModal({ mode = "create", project = null, loading, err
           </button>
         </div>
 
-        {/* ── Contenido scrollable ─────────────────────────────────────── */}
+        {/* Contenido scrollable */}
         <form onSubmit={handleSubmit} className="flex flex-col flex-1 overflow-hidden">
           <div className="flex-1 overflow-y-auto px-6 py-5 flex flex-col gap-5">
 
-            {/* Imagen preview — SOLO en edición (arriba del formulario) */}
+            {/* Imagen preview — solo en edición */}
             {!isCreate && (
               <div className="rounded-xl overflow-hidden flex-shrink-0" style={{ border: "1px solid #2D3135" }}>
                 <div
                   className="h-44 flex items-center justify-center relative"
                   style={{ background: "linear-gradient(135deg, #0c0e11 0%, #1a1c1f 50%, #0c0e11 100%)" }}
                 >
-                  {/* Gráfico decorativo simulado */}
                   <div className="flex items-end gap-1 opacity-40">
                     {[30,50,35,70,45,80,55,90,60,75,40,65,85,50,70].map((h, i) => (
                       <div key={i} className="w-3 rounded-sm" style={{ height: h, background: i === 9 ? "#4cd7f2" : "#da7726", opacity: 0.7 + (i % 3) * 0.1 }} />
@@ -505,7 +517,7 @@ export function ProjectFormModal({ mode = "create", project = null, loading, err
               </div>
             )}
 
-            {/* Campo Nombre */}
+            {/* Nombre */}
             <div>
               <label className="text-on-surface-variant text-xs font-medium uppercase tracking-widest block mb-2">
                 Nombre del proyecto <span className="text-error">*</span>
@@ -526,7 +538,6 @@ export function ProjectFormModal({ mode = "create", project = null, loading, err
                   }}
                   required
                 />
-                {/* Contador inline dentro del input */}
                 <span className="absolute right-4 top-1/2 -translate-y-1/2 text-on-surface-variant text-[11px] pointer-events-none">
                   {name.length}/100
                 </span>
@@ -539,7 +550,7 @@ export function ProjectFormModal({ mode = "create", project = null, loading, err
               )}
             </div>
 
-            {/* Campo Descripción */}
+            {/* Descripción */}
             <div>
               <label className="text-on-surface-variant text-xs font-medium uppercase tracking-widest block mb-2">
                 Descripción
@@ -563,10 +574,9 @@ export function ProjectFormModal({ mode = "create", project = null, loading, err
               </div>
             </div>
 
-            {/* Estado y Prioridad — SOLO en edición */}
+            {/* Estado y Prioridad — solo en edición */}
             {!isCreate && (
               <div className="grid grid-cols-2 gap-4">
-                {/* Estado */}
                 <div>
                   <label className="text-on-surface-variant text-xs font-medium uppercase tracking-widest block mb-2">
                     Estado
@@ -582,7 +592,6 @@ export function ProjectFormModal({ mode = "create", project = null, loading, err
                         <option key={s.value} value={s.value} style={{ color: s.dot, background: "#1e2023" }}>{s.label}</option>
                       ))}
                     </select>
-                    {/* Dot de color del estado */}
                     <div
                       className="absolute left-4 top-1/2 -translate-y-1/2 w-2 h-2 rounded-full pointer-events-none"
                       style={{ background: currentStatus.dot }}
@@ -592,8 +601,6 @@ export function ProjectFormModal({ mode = "create", project = null, loading, err
                     </span>
                   </div>
                 </div>
-
-                {/* Prioridad */}
                 <div>
                   <label className="text-on-surface-variant text-xs font-medium uppercase tracking-widest block mb-2">
                     Prioridad
@@ -623,7 +630,7 @@ export function ProjectFormModal({ mode = "create", project = null, loading, err
               </div>
             )}
 
-            {/* Bloque informativo Owner — SOLO en creación */}
+            {/* Bloque info Owner — solo en creación */}
             {isCreate && (
               <div
                 className="flex items-start gap-4 rounded-xl p-4"
@@ -647,7 +654,7 @@ export function ProjectFormModal({ mode = "create", project = null, loading, err
               </div>
             )}
 
-            {/* Zona de peligro — SOLO en edición */}
+            {/* Zona de peligro — solo en edición */}
             {!isCreate && (
               <div className="rounded-xl p-4 flex flex-col gap-3" style={{ background: "rgba(255,180,171,0.06)", border: "1px solid rgba(255,180,171,0.2)" }}>
                 <div className="flex items-center gap-2">
@@ -670,7 +677,7 @@ export function ProjectFormModal({ mode = "create", project = null, loading, err
               </div>
             )}
 
-            {/* Imagen decorativa — SOLO en creación (abajo) */}
+            {/* Imagen decorativa — solo en creación */}
             {isCreate && (
               <div className="rounded-xl overflow-hidden flex-shrink-0" style={{ border: "1px solid #2D3135" }}>
                 <div className="h-32 flex items-center justify-center" style={{ background: "linear-gradient(135deg, #1a1c1f 0%, #0c0e11 50%, #1a1c1f 100%)" }}>
@@ -683,7 +690,7 @@ export function ProjectFormModal({ mode = "create", project = null, loading, err
             )}
           </div>
 
-          {/* ── Footer fijo ──────────────────────────────────────────────── */}
+          {/* Footer fijo */}
           <div
             className="flex items-center gap-3 px-6 py-4 flex-shrink-0 border-t"
             style={{ borderColor: "#2D3135" }}
@@ -723,23 +730,15 @@ export function ProjectFormModal({ mode = "create", project = null, loading, err
 }
 
 // ── DeleteConfirmModal ─────────────────────────────────────────────────────────
-//
-// Confirmación destructiva fiel al wireframe:
-//   - Header: ícono warning + título + badge "ACCIÓN IRREVERSIBLE"
-//   - Cuerpo: bloque rojo con nombre del proyecto resaltado
-//   - Input de confirmación: el usuario escribe el nombre exacto para habilitar el botón
-//   - Check verde aparece cuando el texto coincide exactamente
-//   - Si hay PROJECT_HAS_ACTIVE_TASKS: input reemplazado por lista de tareas bloqueantes
-//   - Footer: Cancelar (ghost) + Eliminar permanentemente (rojo, deshabilitado hasta confirmación)
 
 export function DeleteConfirmModal({ project, loading, error, blockingTasks = [], onConfirm, onClose }) {
   const [confirmText, setConfirmText] = useState("");
   const inputRef = useRef(null);
 
-  const projectName  = project?.name ?? "";
-  const nameMatches  = confirmText === projectName;
-  const hasBlockers  = blockingTasks.length > 0;
-  const canConfirm   = nameMatches && !hasBlockers && !loading;
+  const projectName = project?.name ?? "";
+  const nameMatches = confirmText === projectName;
+  const hasBlockers = blockingTasks.length > 0;
+  const canConfirm  = nameMatches && !hasBlockers && !loading;
 
   useEffect(() => {
     const h = (e) => { if (e.key === "Escape" && !loading) onClose(); };
@@ -753,29 +752,26 @@ export function DeleteConfirmModal({ project, loading, error, blockingTasks = []
 
   return (
     <>
-      {/* Backdrop con blur */}
+      {/* Backdrop */}
       <div
         className="fixed inset-0 z-[100]"
         style={{ backdropFilter: "blur(12px)", background: "rgba(15,17,19,0.7)" }}
         onClick={() => !loading && onClose()}
       />
 
-      {/* Modal centrado */}
+      {/* Modal */}
       <div className="fixed inset-0 z-[101] flex items-center justify-center p-4">
         <div
           className="w-full max-w-[520px] rounded-xl flex flex-col overflow-hidden shadow-2xl"
           style={{ background: "#282a2d", border: "1px solid rgba(85,67,55,0.4)" }}
           onClick={e => e.stopPropagation()}
         >
-          {/* ── Header ──────────────────────────────────────────────────── */}
+          {/* Header */}
           <div
             className="flex items-start gap-4 p-6 border-b"
             style={{ borderColor: "rgba(85,67,55,0.3)" }}
           >
-            <div
-              className="p-2 rounded-lg flex-shrink-0"
-              style={{ background: "rgba(147,0,10,0.2)" }}
-            >
+            <div className="p-2 rounded-lg flex-shrink-0" style={{ background: "rgba(147,0,10,0.2)" }}>
               <span
                 className="material-symbols-outlined text-error text-[32px]"
                 style={{ fontVariationSettings: "'FILL' 1" }}
@@ -793,10 +789,8 @@ export function DeleteConfirmModal({ project, loading, error, blockingTasks = []
             </div>
           </div>
 
-          {/* ── Cuerpo ──────────────────────────────────────────────────── */}
+          {/* Cuerpo */}
           <div className="p-6 flex flex-col gap-5">
-
-            {/* Advertencia con nombre del proyecto */}
             <div
               className="p-4 rounded-lg border-l-4"
               style={{ background: "rgba(147,0,10,0.1)", borderLeftColor: "#ffb4ab" }}
@@ -809,7 +803,7 @@ export function DeleteConfirmModal({ project, loading, error, blockingTasks = []
               </p>
             </div>
 
-            {/* Tareas bloqueantes — PROJECT_HAS_ACTIVE_TASKS */}
+            {/* Tareas bloqueantes */}
             {hasBlockers && (
               <div
                 className="rounded-xl p-4 flex flex-col gap-3"
@@ -817,9 +811,7 @@ export function DeleteConfirmModal({ project, loading, error, blockingTasks = []
               >
                 <div className="flex items-center gap-2">
                   <span className="material-symbols-outlined text-error text-[18px]">block</span>
-                  <p className="text-error text-sm font-semibold">
-                    No se puede eliminar — tareas activas
-                  </p>
+                  <p className="text-error text-sm font-semibold">No se puede eliminar — tareas activas</p>
                 </div>
                 <p className="text-on-surface-variant text-xs leading-relaxed">
                   Completa o elimina las siguientes tareas antes de continuar:
@@ -827,10 +819,7 @@ export function DeleteConfirmModal({ project, loading, error, blockingTasks = []
                 <ul className="flex flex-col gap-1.5">
                   {blockingTasks.map((task, i) => (
                     <li key={i} className="flex items-center gap-2 text-xs text-on-surface-variant">
-                      <span
-                        className="w-1.5 h-1.5 rounded-full flex-shrink-0"
-                        style={{ background: "#ffb4ab" }}
-                      />
+                      <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: "#ffb4ab" }} />
                       {task}
                     </li>
                   ))}
@@ -849,7 +838,7 @@ export function DeleteConfirmModal({ project, loading, error, blockingTasks = []
               </div>
             )}
 
-            {/* Input de confirmación por nombre — oculto si hay bloqueantes */}
+            {/* Input confirmación */}
             {!hasBlockers && (
               <div className="flex flex-col gap-2">
                 <label className="text-on-surface-variant text-xs font-medium uppercase tracking-widest">
@@ -876,7 +865,6 @@ export function DeleteConfirmModal({ project, loading, error, blockingTasks = []
                     }}
                     onKeyDown={e => { if (e.key === "Enter" && canConfirm) onConfirm(); }}
                   />
-                  {/* Check verde cuando coincide */}
                   <div
                     className="absolute right-4 top-1/2 -translate-y-1/2 transition-all duration-200"
                     style={{ opacity: nameMatches ? 1 : 0, transform: `translateY(-50%) scale(${nameMatches ? 1 : 0.5})` }}
@@ -890,15 +878,13 @@ export function DeleteConfirmModal({ project, loading, error, blockingTasks = []
                   </div>
                 </div>
                 {confirmText && !nameMatches && (
-                  <p className="text-on-surface-variant text-xs opacity-60">
-                    El nombre no coincide exactamente
-                  </p>
+                  <p className="text-on-surface-variant text-xs opacity-60">El nombre no coincide exactamente</p>
                 )}
               </div>
             )}
           </div>
 
-          {/* ── Footer ──────────────────────────────────────────────────── */}
+          {/* Footer */}
           <div
             className="flex flex-col sm:flex-row-reverse gap-3 px-6 py-4 border-t"
             style={{ background: "rgba(51,53,56,0.3)", borderColor: "rgba(85,67,55,0.3)" }}
@@ -952,10 +938,10 @@ function formatRelative(isoString) {
   const date = new Date(isoString);
   const now  = new Date();
   const diff = Math.floor((now - date) / 1000);
-  if (diff < 60)           return "Justo ahora";
-  if (diff < 3600)         return `Hace ${Math.floor(diff / 60)} min`;
-  if (diff < 86400)        return `Hace ${Math.floor(diff / 3600)} h`;
-  if (diff < 2592000)      return `Hace ${Math.floor(diff / 86400)} días`;
-  if (diff < 31536000)     return `Hace ${Math.floor(diff / 2592000)} meses`;
+  if (diff < 60)       return "Justo ahora";
+  if (diff < 3600)     return `Hace ${Math.floor(diff / 60)} min`;
+  if (diff < 86400)    return `Hace ${Math.floor(diff / 3600)} h`;
+  if (diff < 2592000)  return `Hace ${Math.floor(diff / 86400)} días`;
+  if (diff < 31536000) return `Hace ${Math.floor(diff / 2592000)} meses`;
   return `Hace ${Math.floor(diff / 31536000)} años`;
 }

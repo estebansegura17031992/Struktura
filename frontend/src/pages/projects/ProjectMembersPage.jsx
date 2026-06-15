@@ -21,10 +21,10 @@ import {
 
 const NAV_ITEMS = [
   { icon: "dashboard",            label: "Dashboard",      path: "/dashboard" },
-  { icon: "group",                label: "Equipo",          path: "/projects", active: true },
-  { icon: "folder_managed",       label: "Proyectos",       path: "/projects" },
-  { icon: "assignment",           label: "Tareas",          path: "/tasks" },
-  { icon: "admin_panel_settings", label: "Administración",  path: "/admin/users" },
+  { icon: "folder_managed",       label: "Proyectos",      path: "/projects",     active: true },
+  { icon: "assignment",           label: "Tareas",         path: "/tasks" },
+  { icon: "group",                label: "Equipo",         path: "/team" },
+  { icon: "admin_panel_settings", label: "Administración", path: "/admin/users" },
 ];
 
 export default function ProjectMembersPage({ projectId: propProjectId, projectName: propName, myRole: propRole }) {

@@ -65,6 +65,9 @@ export default function ProjectsPage() {
 
   const canCreate = ["editor", "admin"].includes(user?.role);
 
+  const handleMembers = (project) => navigate(`/projects/${project.id}/members`);
+  const handleView    = (project) => navigate(`/projects/${project.id}/members`); // o la ruta del kanban cuando exista
+
   return (
     <div className="min-h-screen font-['Inter'] text-on-background" style={{ backgroundColor: "#111316" }}>
 
@@ -280,7 +283,14 @@ export default function ProjectsPage() {
                 ) : (
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                     {projects.map(p => (
-                      <ProjectCard key={p.id} project={p} onEdit={openEdit} onDelete={openDelete} />
+                      <ProjectCard
+                        key={p.id}
+                        project={p}
+                        onEdit={openEdit}
+                        onDelete={openDelete}
+                        onMembers={handleMembers}
+                        onView={handleView}
+                      />
                     ))}
                     {canCreate && (
                       <CreateProjectCard onClick={openCreate} />
@@ -310,7 +320,14 @@ export default function ProjectsPage() {
                     {loading
                       ? Array.from({ length: 5 }).map((_, i) => <ProjectRowSkeleton key={i} />)
                       : projects.map(p => (
-                          <ProjectRow key={p.id} project={p} onEdit={openEdit} onDelete={openDelete} />
+                          <ProjectRow
+                          key={p.id}
+                          project={p}
+                          onEdit={openEdit}
+                          onDelete={openDelete}
+                          onMembers={handleMembers}
+                          onView={handleView}
+                        />
                         ))
                     }
                   </tbody>

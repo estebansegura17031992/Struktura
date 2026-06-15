@@ -2,8 +2,8 @@
  * AdminUsersPage.jsx
  * Panel Administración de Usuarios — Sprint 2 · E02 · R-0204
  * Layout fiel al mockup Struktura:
- *  - Header sticky: logo, nav, campana, avatar
- *  - Sidebar izquierdo: nav principal + Administration expandido
+ *  - Header sticky: logo, campana, avatar
+ *  - Sidebar izquierdo: nav principal + Administración expandido
  *  - Contenido: toolbar + tabla de usuarios
  */
 import React, { useState } from "react";
@@ -15,12 +15,12 @@ import { UsersTable } from "@/components/ui/UsersTable";
 import { ConfirmRoleModal } from "@/components/ui/ConfirmRoleModal";
 import { Pagination, Spinner } from "@/components/ui/DesignSystem";
 
-// ── Sidebar nav items ──────────────────────────────────────────────────────────
+// ── Sidebar nav items (sin Administración — se muestra como bloque expandible abajo) ──
 const NAV_ITEMS = [
-  { icon: "dashboard",          label: "Dashboard",      path: "/dashboard" },
-  { icon: "folder_managed",     label: "Projects",       path: "/projects"  },
-  { icon: "assignment",         label: "Tasks",          path: "/tasks"     },
-  { icon: "group",              label: "Team",           path: "/team"      },
+  { icon: "dashboard",      label: "Dashboard", path: "/dashboard" },
+  { icon: "folder_managed", label: "Proyectos", path: "/projects" },
+  { icon: "assignment",     label: "Tareas",    path: "/tasks" },
+  { icon: "group",          label: "Equipo",    path: "/team" },
 ];
 
 const ADMIN_SUB = [
@@ -98,17 +98,20 @@ export default function AdminUsersPage() {
             </Link>
           ))}
 
-          {/* Administration — expandible */}
+          {/* Administración — expandible */}
           <div className="mt-1">
             <button
               onClick={() => setAdminOpen(v => !v)}
               className="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium w-full text-left transition-all"
               style={{ backgroundColor: "#da7726", color: "#461f00" }}
             >
-              <span className="material-symbols-outlined text-[20px]" style={{ fontVariationSettings: "'FILL' 1" }}>
+              <span
+                className="material-symbols-outlined text-[20px]"
+                style={{ fontVariationSettings: "'FILL' 1" }}
+              >
                 admin_panel_settings
               </span>
-              <span className="flex-1">Administration</span>
+              <span className="flex-1">Administración</span>
               <span className="material-symbols-outlined text-[18px]">
                 {adminOpen ? "keyboard_arrow_down" : "keyboard_arrow_right"}
               </span>
@@ -136,13 +139,19 @@ export default function AdminUsersPage() {
 
           {/* Footer del sidebar */}
           <div className="mt-auto pt-6 border-t border-outline-variant/30 flex flex-col gap-1">
-            <Link to="/settings" className="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-on-surface-variant hover:text-on-surface hover:bg-surface-container transition-all">
+            <Link
+              to="/settings"
+              className="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-on-surface-variant hover:text-on-surface hover:bg-surface-container transition-all"
+            >
               <span className="material-symbols-outlined text-[20px]">settings</span>
-              Settings
+              Configuración
             </Link>
-            <Link to="/help" className="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-on-surface-variant hover:text-on-surface hover:bg-surface-container transition-all">
+            <Link
+              to="/help"
+              className="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-on-surface-variant hover:text-on-surface hover:bg-surface-container transition-all"
+            >
               <span className="material-symbols-outlined text-[20px]">help</span>
-              Help
+              Ayuda
             </Link>
           </div>
         </aside>
@@ -151,7 +160,10 @@ export default function AdminUsersPage() {
         <main className="flex-1 flex flex-col overflow-hidden">
 
           {/* Top app bar */}
-          <div className="sticky top-[65px] z-40 px-6 py-4 border-b border-outline-variant/30" style={{ backgroundColor: "#111316" }}>
+          <div
+            className="sticky top-[65px] z-40 px-6 py-4 border-b border-outline-variant/30"
+            style={{ backgroundColor: "#111316" }}
+          >
             <h1 className="font-['Poppins'] text-2xl font-bold text-on-surface">
               Administración de Usuarios
             </h1>
@@ -210,7 +222,7 @@ export default function AdminUsersPage() {
                     <strong className="text-on-surface">{total}</strong> usuarios
                   </span>
                 )}
-                <button className="bg-primary-container text-on-primary-container hover:opacity-90 transition-opacity px-6 py-2.5 rounded-full font-label-lg text-label-lg flex items-center gap-2 text-sm">
+                <button className="bg-primary-container text-on-primary-container hover:opacity-90 transition-opacity px-6 py-2.5 rounded-full text-sm flex items-center gap-2">
                   <span className="material-symbols-outlined text-[18px]">person_add</span>
                   Nuevo Usuario
                 </button>

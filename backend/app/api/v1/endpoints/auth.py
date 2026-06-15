@@ -42,8 +42,8 @@ def _set_refresh_cookie(response: Response, token: str) -> None:
         value=token,
         max_age=COOKIE_MAX_AGE,
         httponly=True,
-        secure=True,          # debe ser True siempre cuando samesite=none
-        samesite="none",      # ← cambia de "lax" a "none"
+        secure=True,  # debe ser True siempre cuando samesite=none
+        samesite="none",  # ← cambia de "lax" a "none"
         path="/",
     )
 

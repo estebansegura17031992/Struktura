@@ -42,14 +42,19 @@ def _set_refresh_cookie(response: Response, token: str) -> None:
         value=token,
         max_age=COOKIE_MAX_AGE,
         httponly=True,
-        secure=settings.is_production,
-        samesite="lax",
+        secure=True,          # debe ser True siempre cuando samesite=none
+        samesite="none",      # ← cambia de "lax" a "none"
         path="/",
     )
 
 
 def _clear_refresh_cookie(response: Response) -> None:
-    response.delete_cookie(key="refresh_token", path="/")
+    response.delete_cookie(
+        key="refresh_token",
+        path="/",
+        secure=True,
+        samesite="none",
+    )
 
 
 @router.post("/register", response_model=RegisterResponse, status_code=201)

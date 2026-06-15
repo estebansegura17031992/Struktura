@@ -45,7 +45,7 @@ jobs:
         run: ruff format --check app/ tests/
 
       - name: Mypy — type checking
-        run: mypy app/
+        run: mypy app/ --config-file pyproject.toml
 
   test:
     name: Tests (unit + integration)

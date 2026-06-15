@@ -191,9 +191,28 @@ class ProjectService:
 
         # Refrescar para obtener el objeto completo
         result = await self.repo.get_active_membership(project_id, user_id)
+
+        await log_action(
+            self.session,
+            "member_added",
+            user_id=current_user.id,
+            entity_type="project",
+            entity_id=project_id,
+            metadata={
+                "added_user_id": str(user_id),
+                "role": role,
+            },
+        )
         await self.session.commit()
         if result is None:
             raise AppBaseError("INTERNAL_ERROR", "Error al agregar el miembro.", 500)
+        logger.info(
+            "member_added",
+            project_id=str(project_id),
+            user_id=str(user_id),
+            role=role,
+            actor=str(current_user.id),
+        )
         return result
 
     async def remove_member(
@@ -233,7 +252,25 @@ class ProjectService:
             )
             .values(removed_at=datetime.now(UTC))
         )
+
+        await log_action(
+            self.session,
+            "member_removed",
+            user_id=current_user.id,
+            entity_type="project",
+            entity_id=project_id,
+            metadata={
+                "removed_user_id": str(target_user_id),
+                "previous_role": target_membership.role,
+            },
+        )
         await self.session.commit()
+        logger.info(
+            "member_removed",
+            project_id=str(project_id),
+            target_user_id=str(target_user_id),
+            actor=str(current_user.id),
+        )
 
     async def transfer_ownership(
         self,

@@ -18,7 +18,9 @@ class Settings(BaseSettings):
     ENVIRONMENT: Literal["development", "staging", "production"] = "development"
     DEBUG: bool = True
     APP_NAME: str = "Kanban MVP"
-    APP_VERSION: str = "0.1.0"
+    APP_VERSION: str = "0.2.0"
+
+    FRONTEND_URL: str = "http://localhost:5173"
 
     # Database
     DATABASE_URL: str = ""

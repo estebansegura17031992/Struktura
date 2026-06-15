@@ -1,10 +1,14 @@
-"""Schemas de usuario — request/response DTOs (R-0101, R-0108)."""
+"""Schemas de usuario — request/response DTOs (R-0101, R-0108, R-0204)."""
 
 import re
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, EmailStr, field_validator
+from pydantic import BaseModel, EmailStr, Field, field_validator
+
+from app.models.user import User
+
+# ── Auth / registro ────────────────────────────────────────────────────────────
 
 
 class UserRegisterRequest(BaseModel):
@@ -33,6 +37,9 @@ class UserRegisterRequest(BaseModel):
         if not any(c.isdigit() for c in v):
             raise ValueError("La contraseña debe contener al menos un número")
         return v
+
+
+# ── Perfil de usuario ──────────────────────────────────────────────────────────
 
 
 class UserResponse(BaseModel):
@@ -65,3 +72,62 @@ class ChangePasswordRequest(BaseModel):
         if not any(c.isdigit() for c in v):
             raise ValueError("La contraseña debe contener al menos un número")
         return v
+
+
+# ── Admin schemas (Sprint 2 · ART-04 · R-0204) ────────────────────────────────
+
+
+class ChangeRoleRequest(BaseModel):
+    """Body para PATCH /admin/users/{id}/role"""
+
+    role: str = Field(..., description="Nuevo rol: viewer | editor | admin")
+
+    @field_validator("role")
+    @classmethod
+    def validate_role(cls, v: str) -> str:
+        allowed = {"viewer", "editor", "admin"}
+        if v not in allowed:
+            raise ValueError(f"Rol inválido. Permitidos: {', '.join(sorted(allowed))}")
+        return v
+
+
+class UserAdminResponse(BaseModel):
+    """DTO de usuario para el panel de administración."""
+
+    id: str
+    email: str
+    username: str
+    full_name: str | None
+    role: str
+    is_verified: bool
+    is_active: bool
+    timezone: str
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+    @classmethod
+    def from_orm(cls, user: User) -> "UserAdminResponse":
+        return cls(
+            id=str(user.id),
+            email=user.email,
+            username=user.username,
+            full_name=user.full_name,
+            role=user.role,
+            is_verified=user.email_verified,
+            is_active=user.deleted_at is None,
+            timezone=user.timezone,
+            created_at=user.created_at,
+        )
+
+
+class UserListResponse(BaseModel):
+    """Response paginado para listado de usuarios (admin)."""
+
+    items: list[UserAdminResponse]
+    page: int
+    page_size: int
+    total: int
+    total_pages: int
+    next_page: int | None
+    previous_page: int | None

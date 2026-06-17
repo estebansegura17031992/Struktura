@@ -17,7 +17,10 @@ export const resendVerification = (email) =>
   api.post("/auth/resend-verification", { email }).then((r) => r.data);
  
 export const loginUser = (email, password) =>
-  api.post("/auth/login", { email, password }).then((r) => r.data);
+  api.post("/auth/login", { email, password }, { withCredentials: true }).then((r) => r.data);
+
+export const logoutUser = () =>
+  api.post("/auth/logout", {}, { withCredentials: true }).then((r) => r.data);
  
 /**
  * R-0103 — Silent refresh.

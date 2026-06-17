@@ -16,9 +16,6 @@ export const verifyEmail = (email, code) =>
 export const resendVerification = (email) =>
   api.post("/auth/resend-verification", { email }).then((r) => r.data);
  
-export const loginUser = (email, password) =>
-  api.post("/auth/login", { email, password }, { withCredentials: true }).then((r) => r.data);
-
 export const logoutUser = () =>
   api.post("/auth/logout", {}, { withCredentials: true }).then((r) => r.data);
  

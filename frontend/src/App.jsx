@@ -9,23 +9,32 @@ import { useEffect, useRef, useState } from "react";
 import AppRouter from "@/router/AppRouter";
 import { useAuthStore } from "@/store/authStore";
 import { refreshToken, getMe } from "@/api/auth";
- 
+
 const App = () => {
   const { setAuth, clearAuth, isAuthenticated, accessToken } = useAuthStore();
+  const [hydrated, setHydrated] = useState(useAuthStore.persist.hasHydrated());
   const [bootstrapping, setBootstrapping] = useState(!isAuthenticated);
   const [connectionError, setConnectionError] = useState(false);
   const ran = useRef(false);
- 
+
+  // Esperar hidratación de Zustand persist
   useEffect(() => {
-    // Si ya hay sesión activa en sessionStorage, no hacer nada
+    const unsub = useAuthStore.persist.onFinishHydration(() => setHydrated(true));
+    if (useAuthStore.persist.hasHydrated()) setHydrated(true);
+    return unsub;
+  }, []);
+
+  useEffect(() => {
+    if (!hydrated) return; // no arrancar bootstrap hasta hidratar
+
     if (isAuthenticated && accessToken) {
       setBootstrapping(false);
       return;
     }
- 
+
     if (ran.current) return;
     ran.current = true;
- 
+
     const run = async () => {
       setBootstrapping(true);
       try {
@@ -35,19 +44,34 @@ const App = () => {
       } catch (err) {
         const status = err?.response?.status;
         if (status === 401 || status === 403) {
-          clearAuth();   // sin sesión — flujo normal
+          clearAuth();
         } else {
           clearAuth();
-          if (!status) setConnectionError(true); // sin respuesta = error de red
+          if (!status) setConnectionError(true);
         }
       } finally {
         setBootstrapping(false);
       }
     };
- 
+
     run();
-  }, []);
- 
+  }, [hydrated]);
+
+  // Bloquear render hasta hidratar
+  if (!hydrated || bootstrapping) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-12 h-12 bg-primary-container flex items-center justify-center rounded-full shadow-lg">
+            <span className="material-symbols-outlined text-on-primary-container text-[28px]"
+              style={{ fontVariationSettings: "'FILL' 1" }}>hexagon</span>
+          </div>
+          <div className="w-8 h-8 rounded-full border-2 border-primary/30 border-t-primary animate-spin" />
+        </div>
+      </div>
+    );
+  }
+
   if (connectionError) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-6">
@@ -65,22 +89,8 @@ const App = () => {
       </div>
     );
   }
- 
-  if (bootstrapping) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="flex flex-col items-center gap-4">
-          <div className="w-12 h-12 bg-primary-container flex items-center justify-center rounded-full shadow-lg">
-            <span className="material-symbols-outlined text-on-primary-container text-[28px]"
-              style={{ fontVariationSettings: "'FILL' 1" }}>hexagon</span>
-          </div>
-          <div className="w-8 h-8 rounded-full border-2 border-primary/30 border-t-primary animate-spin" />
-        </div>
-      </div>
-    );
-  }
- 
+
   return <AppRouter />;
 };
- 
+
 export default App;

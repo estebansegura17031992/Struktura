@@ -8,7 +8,7 @@ import { useAuthStore } from "@/store/authStore";
  
 const PrivateRoute = () => {
   const { isAuthenticated, isBootstrapping } = useAuthStore();
- 
+  console.log("PrivateRoute:", { isAuthenticated, isBootstrapping });
   if (isBootstrapping) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">

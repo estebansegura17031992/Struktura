@@ -32,8 +32,6 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-          cache: "pip"
-          cache-dependency-path: backend/requirements*.txt
 
       - name: Instalar dependencias
         run: |
@@ -47,7 +45,7 @@ jobs:
         run: ruff format --check app/ tests/
 
       - name: Mypy — type checking
-        run: mypy app/
+        run: mypy app/ --config-file pyproject.toml
 
   test:
     name: Tests (unit + integration)
@@ -99,7 +97,7 @@ jobs:
         with:
           python-version: "3.11"
           # Sin cache de pip — garantiza que se instala la versión exacta
-          # del requirements.txt en cada run sin usar versiones cacheadas.
+          # del requirements.txt en cada run sin usar versiones cacheadas
 
       - name: Instalar dependencias
         run: |

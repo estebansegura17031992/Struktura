@@ -1,91 +1,62 @@
-# Integración E04 — rutas reales confirmadas en el repo
+# Integración E04 — alcance completo (PM confirmó: todo en un solo PR)
 
-Todas las rutas de abajo fueron confirmadas contra el árbol real de
-`Struktura/backend` (no son una convención asumida). Los modelos
-(`app/models/task.py`) **no se tocan** — ya existen, completos, hechos por
-otro compañero de equipo.
+## 1. Archivos a copiar/sobreescribir en tu repo
 
-## 1. Registrar el router en `app/api/v1/router.py`
+| Archivo | Ruta real | Estado |
+|---|---|---|
+| Migración correctiva del seed | `backend/app/db/migrations/versions/0003_fix_max_task_assignees_seed.py` | ya copiado |
+| DTOs (incluye `TaskAssigneesUpdate` nuevo) | `backend/app/schemas/task.py` | **sobreescribir** — se agregó el schema de assignees |
+| Repository (filtros, FTS, timer ADR-03) | `backend/app/repositories/task_repository.py` | **sobreescribir** |
+| Service (list_tasks, update_assignees, audit log en status) | `backend/app/services/task_service.py` | **sobreescribir** |
+| Router (GET + PATCH /assignees nuevos) | `backend/app/api/v1/endpoints/tasks.py` | **sobreescribir** |
+| Tests de integración | `backend/tests/integration/test_e04_tasks.py` | nuevo |
+| `router.py` | `backend/app/api/v1/router.py` | ya registrado |
 
-Tu `router.py` actual tiene esto comentado:
+## 2. Qué se agregó sobre lo que ya tenías corriendo
 
-```python
-# Sprint 3+:
-# from app.api.v1.endpoints import tasks, timer, dashboard, comments
-# api_router.include_router(tasks.router)
-```
+- **`GET /tasks`** — filtros (`priority`, `status`, `assigned_to`, `due_date_from/to`, `search`), paginación clamp a 50 (R-0405), FTS vía `search_vector` + GIN (R-0404, mínimo 2 caracteres, error 422 si es menor).
+- **`PATCH /tasks/{id}/assignees`** — reemplaza el set de asignados, valida `max_task_assignees`, e implementa ADR-03: al pasar de 1 a 2+ asignados con timer activo, lo detiene automáticamente (`stop_reason='multi_assignee'`) y registra `audit_logs` con `action='timer_stopped_multi_assignee'`. Al bajar a 1, `timer_disabled` vuelve a `false`.
+- **`PATCH /tasks/{id}/status`** corregido — ahora registra `audit_logs` con `action='task_status_change'` (R-0409, se me había pasado en la primera pasada) y el permiso se amplía: editor/owner siempre puede; un asignado con rol viewer **nunca** puede, ni siquiera estando asignado (regla explícita del PM).
 
-Descomentar solo la parte de `tasks`:
+## 3. Dependencia con E05 (cronómetro) — importante para el PR
 
-```python
-from app.api.v1.endpoints import admin, auth, health, projects, tasks, users  # + tasks
+`PATCH /tasks/{id}/assignees` necesita leer/detener un timer activo (ADR-03), pero **`app/api/v1/endpoints/timers.py` no existe todavía** (es Sprint 4/E05). Por eso:
+- `task_repository.py` tiene 2 métodos mínimos (`get_active_timer`, `stop_timer`) que operan directo sobre `TaskTimeEntry` — sin repository/service de timers dedicado.
+- Cuando el equipo construya E05, hay que decidir si esos 2 métodos se migran a un `timer_repository.py` compartido, o si se dejan donde están y el timer_service de E05 los reutiliza. Vale la pena dejarlo como punto de discusión en el PR, no decidirlo unilateralmente acá.
 
-api_router.include_router(health.router)
-api_router.include_router(auth.router)
-api_router.include_router(users.router)
-api_router.include_router(admin.router)
-api_router.include_router(projects.router)
-api_router.include_router(tasks.router)  # nuevo — E04
-```
-
-## 2. Aplicar la migración 0003 (corrección de seed, NO crea tablas)
-
-`0001_initial_schema.py` ya crea `tasks`, `task_assignees`, los ENUM,
-`search_vector` y el índice GIN. La única pieza que faltaba y que corrige
-esta migración es el valor de `system_settings.max_task_assignees`, que
-`0001` insertó como `10` y el PM pidió `5`.
+## 4. Aplicar y probar
 
 ```powershell
 cd backend
 alembic upgrade head
-alembic current   # debe mostrar 0003 (head)
+alembic current   # 0003 (head)
 ```
 
-Verificar:
-```sql
-SELECT key, value FROM system_settings WHERE key = 'max_task_assignees';
--- max_task_assignees | 5
-```
-
-## 3. Archivos entregados y su ruta real
-
-| Día | Archivo | Ruta real en tu repo | Estado |
-|---|---|---|---|
-| 1 | Migración correctiva del seed | `backend/app/db/migrations/versions/0003_fix_max_task_assignees_seed.py` | nuevo |
-| 1/2 | Modelo `Task`/`TaskAssignee` | `backend/app/models/task.py` | **ya existe — no tocar** |
-| 2 | DTOs request/response | `backend/app/schemas/task.py` | nuevo |
-| 2 | Contrato OpenAPI congelado | `backend/app/docs/openapi_tasks_contract_dia2.json` | confirmar si ya existe algo con este nombre antes de sobreescribir |
-| 3 | Repository | `backend/app/repositories/task_repository.py` | nuevo |
-| 3 | Service (reglas de negocio) | `backend/app/services/task_service.py` | nuevo |
-| 3 | Router (CRUD + RBAC heredado) | `backend/app/api/v1/endpoints/tasks.py` | nuevo — **no** `app/api/v1/tasks.py` (ese archivo está vacío/sin usar) |
-| — | Este README | `backend/app/docs/README_integracion_E04.md` | confirmar si ya existe contenido antes de sobreescribir |
-
-Antes de copiar `openapi_tasks_contract_dia2.json` y este README, corre:
 ```powershell
-Get-ChildItem backend\app\docs
+pytest tests/integration/test_e04_tasks.py -v
 ```
-En el árbol original ya vimos que `app/docs/` tiene archivos con nombres
-truncados (`openapi_...`, `README_i...`) — puede que ya existan versiones
-de otro compañero. Si es así, pega su contenido antes de sobreescribir,
-igual que se hizo con `task.py`.
 
-## 4. Nota para Security (Día 3)
+Si algún test de ADR-03 falla, lo más probable es un desfase entre el nombre de columna `stop_reason` asumido y el real — confirmar contra `app/models/task.py::TaskTimeEntry` antes de reportar bug.
 
-`app/api/v1/endpoints/tasks.py` no reimplementa `require_role()` ni
-`verify_project_membership()` de `app/dependencies.py` porque ese módulo
-no está wireado a ningún router real. Sigue el patrón que sí está en
-producción (`get_project_member` local de `projects.py`), adaptado para
-resolver `project_id` desde una tarea existente. A diferencia de
-`projects.py` (que tiene `if membership.role != "owner"...` inline en
-`update_project`/`delete_project`), aquí el chequeo de rol vive en la
-dependencia `require_task_role(...)` — sin lógica de permisos inline en
-los endpoints, por pedido explícito del PM.
+## 5. Commit
 
-## 5. Diferencia de convención a decidir con el equipo (no bloqueante)
+```powershell
+git add backend/app/db/migrations/versions/0003_fix_max_task_assignees_seed.py `
+        backend/app/schemas/task.py `
+        backend/app/repositories/task_repository.py `
+        backend/app/services/task_service.py `
+        backend/app/api/v1/endpoints/tasks.py `
+        backend/app/api/v1/router.py `
+        backend/app/api/v1/tasks.py `
+        backend/tests/integration/test_e04_tasks.py `
+        backend/app/docs/openapi_tasks_contract_dia2.json `
+        backend/app/docs/README_integracion_E04.md
 
-`projects.py` define sus DTOs (`ProjectCreateRequest`, `ProjectResponse`,
-etc.) inline en el mismo archivo del router, no en `app/schemas/`.
-El `task.py` de schemas que entregamos aquí sí vive en esa carpeta, que
-es consistente con el resto de `app/schemas/` pero no con el estilo
-inline de `projects.py`. No es bloqueante para Día 3, pero vale la pena
-que el equipo unifique el criterio antes de Sprint 4.
+git status
+git commit -m "feat(E04): CRUD completo de tasks - migracion, DTOs, filtros/FTS, ADR-03, RBAC heredado, tests"
+git push origin sp3_backend_task
+```
+
+## 6. Nota para Security (sigue vigente)
+
+`app/api/v1/endpoints/tasks.py` no reimplementa `require_role()`/`verify_project_membership()` de `app/dependencies.py` (no está wireado a ningún router real). Sigue el patrón real de `get_project_member` de `projects.py`. A diferencia de `projects.py`, aquí no hay permisos inline — todo vive en dependencias (`require_task_role`, `require_task_status_permission`).

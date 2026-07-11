@@ -102,6 +102,22 @@ class TaskStatusUpdate(BaseModel):
     status: TaskStatus
 
 
+class TaskAssigneesUpdate(BaseModel):
+    """PATCH /tasks/{id}/assignees — reemplaza el set completo de asignados (R-0407).
+    Mínimo 1 asignado (no se permite dejar la tarea sin nadie). Máximo:
+    system_settings.max_task_assignees, validado en el service layer."""
+
+    assignee_ids: List[UUID] = Field(..., min_length=1)
+
+    @field_validator("assignee_ids")
+    @classmethod
+    def _dedupe(cls, v: List[UUID]) -> List[UUID]:
+        deduped = list(dict.fromkeys(v))
+        if not deduped:
+            raise ValueError("Debe haber al menos un asignado.")
+        return deduped
+
+
 # --------------------------------------------------------------------------
 # Response DTO
 # --------------------------------------------------------------------------

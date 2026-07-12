@@ -18,16 +18,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import AppBaseError
 from app.repositories.task_repository import TaskRepository
+from app.schemas.common import PaginatedResponse
 from app.schemas.task import (
     TaskAssigneeOut,
     TaskAssigneesUpdate,
     TaskCreate,
     TaskListItem,
     TaskOut,
+    TaskPriority,
+    TaskStatus,
     TaskStatusUpdate,
     TaskUpdate,
 )
-from app.schemas.common import PaginatedResponse
 from app.services.audit_service import log_action
 
 DEFAULT_MAX_TASK_ASSIGNEES = 5  # fallback si la fila de system_settings no existiera
@@ -88,8 +90,8 @@ class TaskService:
             task_number=task.task_number,
             title=task.title,
             description=task.description,
-            priority=task.priority,
-            status=task.status,
+            priority=TaskPriority(task.priority),
+            status=TaskStatus(task.status),
             project_id=task.project_id,
             created_by=task.created_by,
             due_date=task.due_date,
@@ -115,7 +117,7 @@ class TaskService:
     async def create_task(self, *, payload: TaskCreate, created_by: UUID) -> TaskOut:
         await self._validate_assignee_count(len(payload.assignee_ids))
 
-        task = await self._repo.create(
+        task = await self._repo.create_task(
             title=payload.title,
             description=payload.description,
             priority=payload.priority.value,
@@ -266,8 +268,8 @@ class TaskService:
                     task_number=task.task_number,
                     title=task.title,
                     description=task.description,
-                    priority=task.priority,
-                    status=task.status,
+                    priority=TaskPriority(task.priority),
+                    status=TaskStatus(task.status),
                     project_id=task.project_id,
                     created_by=task.created_by,
                     due_date=task.due_date,

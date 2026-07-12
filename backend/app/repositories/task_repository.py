@@ -8,11 +8,13 @@ Ubicación en el repo: backend/app/repositories/task_repository.py
 """
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import UTC, date, datetime
-from typing import Sequence
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import and_, func, select, text
+from sqlalchemy import delete as sa_delete
 from sqlalchemy import update as sa_update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -42,7 +44,7 @@ class TaskRepository(BaseRepository[Task]):
             .where(TaskAssignee.task_id == task_id)
             .order_by(TaskAssignee.assigned_at.asc())
         )
-        return result.all()
+        return [(row[0], row[1]) for row in result.all()]
 
     async def count_assignees(self, task_id: UUID) -> int:
         result = await self.session.execute(
@@ -66,7 +68,7 @@ class TaskRepository(BaseRepository[Task]):
         page_size: int = 20,
     ) -> tuple[list[Task], int]:
         """Filtros combinables (AND). `search` usa el índice GIN de search_vector (R-0404)."""
-        conditions = [Task.project_id == project_id, Task.deleted_at.is_(None)]
+        conditions: list[Any] = [Task.project_id == project_id, Task.deleted_at.is_(None)]
 
         if priority is not None:
             conditions.append(Task.priority == priority)
@@ -112,7 +114,7 @@ class TaskRepository(BaseRepository[Task]):
 
     # ── Escritura ────────────────────────────────────────────────────────
 
-    async def create(
+    async def create_task(
         self,
         *,
         title: str,
@@ -120,7 +122,7 @@ class TaskRepository(BaseRepository[Task]):
         priority: str,
         project_id: UUID,
         created_by: UUID,
-        due_date=None,
+        due_date: date | None = None,
         timer_disabled: bool = False,
     ) -> Task:
         task = Task(
@@ -171,7 +173,7 @@ class TaskRepository(BaseRepository[Task]):
         self, task_id: UUID, *, assignee_ids: Sequence[UUID], assigned_by: UUID
     ) -> None:
         await self.session.execute(
-            TaskAssignee.__table__.delete().where(TaskAssignee.task_id == task_id)
+            sa_delete(TaskAssignee).where(TaskAssignee.task_id == task_id)
         )
         for user_id in assignee_ids:
             self.session.add(

@@ -4,7 +4,14 @@ Agrega todos los sub-routers de cada dominio.
 """
 from fastapi import APIRouter
 
-from app.api.v1.endpoints import admin, auth, health, projects, tasks, users  # Sprint 2 + E04
+from app.api.v1.endpoints import (  # Sprint 2 + E04
+    admin,
+    auth,
+    health,
+    projects,
+    tasks,
+    users,
+)
 
 api_router = APIRouter(prefix="/api/v1")
 api_router.include_router(health.router)

@@ -1,5 +1,5 @@
-"""
-Alembic env.py — usa DATABASE_URL_SYNC (psycopg2, no asyncpg).
+﻿"""
+Alembic env.py â€” usa DATABASE_URL_SYNC (psycopg2, no asyncpg).
 DATABASE_URL (asyncpg) es solo para uvicorn/SQLAlchemy async.
 """
 
@@ -19,10 +19,10 @@ from app.db.base import Base  # noqa: E402
 
 config = context.config
 
-# Usar DATABASE_URL_SYNC — psycopg2 síncrono, compatible con Alembic
-sync_url = settings.DATABASE_URL_SYNC
+# Usar DATABASE_URL_SYNC â€” psycopg2 sÃ­ncrono, compatible con Alembic
+sync_url = os.environ.get("ALEMBIC_DATABASE_URL_SYNC") or settings.DATABASE_URL_SYNC
 if not sync_url:
-    raise ValueError("DATABASE_URL_SYNC no está configurada")
+    raise ValueError("DATABASE_URL_SYNC no estÃ¡ configurada")
 
 config.set_main_option("sqlalchemy.url", sync_url)
 

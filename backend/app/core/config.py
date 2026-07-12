@@ -1,4 +1,4 @@
-"""Configuración centralizada con pydantic-settings."""
+﻿"""ConfiguraciÃ³n centralizada con pydantic-settings."""
 
 from functools import lru_cache
 from typing import Literal
@@ -25,6 +25,8 @@ class Settings(BaseSettings):
     # Database
     DATABASE_URL: str = ""
     DATABASE_URL_SYNC: str = ""
+    TEST_DATABASE_URL: str = ""
+    TEST_DATABASE_URL_SYNC: str = ""
 
     # JWT
     JWT_SECRET: str = ""
@@ -44,7 +46,7 @@ class Settings(BaseSettings):
     ENABLE_DOCS: bool = True
     RATE_LIMIT_ENABLED: bool = True
 
-    # Tests — cuando es True el rate limiting se desactiva en tests
+    # Tests â€” cuando es True el rate limiting se desactiva en tests
     TESTING: bool = False
 
     @field_validator("JWT_SECRET")
@@ -70,3 +72,4 @@ def get_settings() -> Settings:
 
 
 settings = get_settings()
+

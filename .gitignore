@@ -30,3 +30,6 @@ frontend/.vite/
 .idea/
 *.swp
 .DS_Store
+
+#Claude
+Claude.md

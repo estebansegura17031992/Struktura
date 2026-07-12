@@ -7,6 +7,7 @@ from collections.abc import MutableMapping
 from contextlib import asynccontextmanager
 from typing import Any
 
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -19,6 +20,8 @@ from app.api.v1.router import api_router
 from app.core.config import settings
 from app.core.exceptions import AppBaseError
 from app.core.logging import configure_logging, get_logger
+from app.db.session import get_session_factory
+from app.services.timer_service import TimerService
 
 configure_logging(debug=settings.DEBUG)
 logger = get_logger(__name__)
@@ -52,6 +55,22 @@ class SecurityHeadersMiddleware:
         await self.app(scope, receive, send_with_headers)
 
 
+async def _close_orphaned_timers_job() -> None:
+    """Sprint 4 · Objetivo 4 — corre cada 15 min, cierra timers activos más
+    viejos que system_settings.max_timer_hours. Sesión propia (no
+    request-scoped): el scheduler vive fuera del ciclo de vida de un
+    request HTTP."""
+    session_factory = get_session_factory()
+    async with session_factory() as session:
+        service = TimerService(session)
+        closed = await service.close_orphaned_timers()
+        if closed:
+            logger.info("orphaned_timers_closed", count=closed)
+
+
+scheduler = AsyncIOScheduler()
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info(
@@ -60,7 +79,20 @@ async def lifespan(app: FastAPI):
         version=settings.APP_VERSION,
         environment=settings.ENVIRONMENT,
     )
+    # No arrancar el scheduler en tests — ASGITransport (httpx) sin
+    # asgi-lifespan nunca dispara este contexto, pero el guard queda como
+    # segunda barrera explícita si eso cambia.
+    if not settings.TESTING:
+        scheduler.add_job(
+            _close_orphaned_timers_job,
+            "interval",
+            minutes=15,
+            id="close_orphaned_timers",
+        )
+        scheduler.start()
     yield
+    if scheduler.running:
+        scheduler.shutdown(wait=False)
     logger.info("shutdown", app=settings.APP_NAME)
 
 

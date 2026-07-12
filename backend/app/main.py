@@ -21,6 +21,7 @@ from app.core.config import settings
 from app.core.exceptions import AppBaseError
 from app.core.logging import configure_logging, get_logger
 from app.db.session import get_session_factory
+from app.services.invitation_service import InvitationService
 from app.services.timer_service import TimerService
 
 configure_logging(debug=settings.DEBUG)
@@ -68,6 +69,17 @@ async def _close_orphaned_timers_job() -> None:
             logger.info("orphaned_timers_closed", count=closed)
 
 
+async def _close_expired_invitations_job() -> None:
+    """Sprint 4 · E03 · Objetivo 8 — corre cada hora, marca 'expired' las
+    invitaciones pending vencidas."""
+    session_factory = get_session_factory()
+    async with session_factory() as session:
+        service = InvitationService(session)
+        expired = await service.close_expired_invitations()
+        if expired:
+            logger.info("expired_invitations_closed", count=expired)
+
+
 scheduler = AsyncIOScheduler()
 
 
@@ -88,6 +100,12 @@ async def lifespan(app: FastAPI):
             "interval",
             minutes=15,
             id="close_orphaned_timers",
+        )
+        scheduler.add_job(
+            _close_expired_invitations_job,
+            "interval",
+            hours=1,
+            id="close_expired_invitations",
         )
         scheduler.start()
     yield

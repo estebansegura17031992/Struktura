@@ -34,6 +34,7 @@ from app.repositories.auth_repository import (
     PasswordResetRepository,
     RefreshTokenRepository,
 )
+from app.repositories.timer_repository import TimerRepository
 from app.repositories.user_repository import UserRepository
 from app.schemas.user import UserRegisterRequest
 from app.services.audit_service import log_action
@@ -253,6 +254,22 @@ class AuthService:
 
         if token and not token.is_revoked:
             await self.refresh_repo.revoke_token(token.id)
+
+        # Sprint 4 · Objetivo 5: detener el timer activo del usuario como
+        # parte ATÓMICA del logout (mismo commit) — no un paso opcional que
+        # se pueda saltar si algo falla después.
+        timer_repo = TimerRepository(self.session)
+        active_timer = await timer_repo.get_active_for_user(user_id)
+        if active_timer is not None:
+            await timer_repo.close(active_timer, reason="logout")
+            await log_action(
+                self.session,
+                action="timer_stopped_logout",
+                user_id=user_id,
+                entity_type="task_time_entry",
+                entity_id=active_timer.id,
+                metadata={"task_id": str(active_timer.task_id)},
+            )
 
         await log_action(
             self.session,

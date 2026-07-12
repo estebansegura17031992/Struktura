@@ -34,6 +34,23 @@ async def send_reset_password_email(email: str, username: str, reset_url: str) -
     await _send(to=email, subject=subject, html=html)
 
 
+async def send_project_invitation_email(
+    email: str, project_name: str, inviter_username: str, accept_url: str
+) -> None:
+    """Sprint 4 · E03 · Objetivo 7."""
+    subject = f"[{settings.APP_NAME}] {inviter_username} te invitó a {project_name}"
+    html = f"""
+    <h2>Hola,</h2>
+    <p><strong>{inviter_username}</strong> te invitó a colaborar en el
+    proyecto <strong>{project_name}</strong>.</p>
+    <p><a href="{accept_url}" style="padding:10px 20px;background:#7c6af7;color:#fff;
+       border-radius:6px;text-decoration:none">Ver invitación</a></p>
+    <p>Si no tienes cuenta todavía, el enlace te lleva a registrarte primero.</p>
+    <p>Si no esperabas esta invitación, ignora este mensaje.</p>
+    """
+    await _send(to=email, subject=subject, html=html)
+
+
 async def _send(to: str, subject: str, html: str) -> None:
     if settings.EMAIL_DEV_MODE:
         # Imprime en consola — no consume cuota Resend en desarrollo

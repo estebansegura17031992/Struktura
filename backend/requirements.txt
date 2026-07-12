@@ -29,6 +29,9 @@ structlog==24.1.0
  
 # ── HTTP client ────────────────────────────────────────────────────────────────
 httpx==0.27.0
+
+# ── Jobs periódicos (E05 · Sprint 4 · Objetivo 4 — cierre de timers huérfanos) ──
+apscheduler==3.10.4
  
 # ── Testing ────────────────────────────────────────────────────────────────────
 pytest==8.2.0

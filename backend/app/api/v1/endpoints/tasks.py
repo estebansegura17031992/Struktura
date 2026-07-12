@@ -45,7 +45,9 @@ from app.schemas.task import (
     TaskStatusUpdate,
     TaskUpdate,
 )
+from app.schemas.timer import TimeEntriesResponse, TimerEntryOut
 from app.services.task_service import TaskService
+from app.services.timer_service import TimerService
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
 
@@ -343,4 +345,108 @@ async def update_task_assignees(
     service = TaskService(db)
     return await service.update_assignees(
         task_id, payload=body, actor_id=current_user.id
+    )
+
+
+# ── Cronómetro (E05 · Sprint 4 · Objetivos 1 y 3) ─────────────────────────
+# Cualquier miembro activo puede llamar start/stop — el service valida que
+# sea asignado y que la tarea tenga exactamente 1 asignado (ADR-03); no es
+# un chequeo de rol de proyecto, por eso alcanza con TaskMembership acá.
+
+
+@router.post(
+    "/{task_id}/timer/start",
+    response_model=TimerEntryOut,
+    status_code=201,
+    responses={
+        403: {"description": "NOT_ASSIGNED — solo un asignado puede iniciar el timer"},
+        404: {"description": "Tarea no encontrada"},
+        409: {"description": "TIMER_ALREADY_ACTIVE"},
+        422: {
+            "description": "TIMER_MULTI_ASSIGNEE_DISABLED — la tarea tiene 2+ asignados"
+        },
+    },
+)
+async def start_timer(
+    task_id: UUID,
+    current_user: CurrentUser,
+    db: DB,
+    _membership: TaskMembership,
+):
+    """Inicia el cronómetro. Detiene automáticamente cualquier otro timer
+    activo del mismo usuario (nunca dos timers activos a la vez)."""
+    service = TimerService(db)
+    return await service.start(task_id=task_id, actor_id=current_user.id)
+
+
+@router.post(
+    "/{task_id}/timer/stop",
+    response_model=TimerEntryOut,
+    responses={
+        404: {"description": "No hay timer activo del usuario en esta tarea"},
+    },
+)
+async def stop_timer(
+    task_id: UUID,
+    current_user: CurrentUser,
+    db: DB,
+    _membership: TaskMembership,
+):
+    """Detiene el timer propio activo en esta tarea. `duration_seconds` se
+    calcula en el backend — nunca se confía en un valor del cliente."""
+    service = TimerService(db)
+    return await service.stop(task_id=task_id, actor_id=current_user.id)
+
+
+# ── Historial de tiempo (E05 · Sprint 4 · Objetivo 3) ─────────────────────
+
+
+@router.get(
+    "/{task_id}/time-entries",
+    response_model=TimeEntriesResponse,
+    responses={
+        403: {"description": "Sin membresía activa en el proyecto de la tarea"},
+        404: {"description": "Tarea no encontrada"},
+    },
+)
+async def list_time_entries(
+    task_id: UUID,
+    current_user: CurrentUser,
+    db: DB,
+    membership: TaskMembership,
+):
+    """DU-04: viewer ve solo sus propias entradas (scope="own"); editor/admin
+    ven las de todo el equipo (scope="all"). Solo entradas cerradas."""
+    service = TimerService(db)
+    is_privileged = membership.role in ("owner", "editor")
+    return await service.list_time_entries(
+        task_id=task_id, requester_id=current_user.id, is_privileged=is_privileged
+    )
+
+
+@router.delete(
+    "/{task_id}/time-entries/{entry_id}",
+    status_code=204,
+    responses={
+        403: {"description": "Solo el dueño de la entrada (o admin) puede borrarla"},
+        404: {"description": "Entrada de tiempo no encontrada"},
+        422: {
+            "description": "Timer activo, o entrada con más de 24h desde que se cerró"
+        },
+    },
+)
+async def delete_time_entry(
+    task_id: UUID,
+    entry_id: UUID,
+    current_user: CurrentUser,
+    db: DB,
+    _membership: TaskMembership,
+):
+    """El propio usuario puede borrar sus entradas con <24h de antigüedad;
+    admin puede borrar cualquiera. Toda eliminación queda en audit_logs."""
+    service = TimerService(db)
+    await service.delete_entry(
+        entry_id=entry_id,
+        actor_id=current_user.id,
+        actor_is_admin=current_user.role == "admin",
     )

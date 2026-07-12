@@ -35,6 +35,8 @@ from app.models.project import Project, ProjectMember
 from app.models.user import User
 from app.repositories.project_repository import ProjectRepository
 from app.schemas.common import MessageResponse, PaginatedResponse
+from app.schemas.invitation import InvitationCreate, InvitationOut
+from app.services.invitation_service import InvitationService
 from app.services.project_service import ProjectService
 
 router = APIRouter(prefix="/projects", tags=["projects"])
@@ -316,6 +318,47 @@ async def list_projects(
     )
 
 
+@router.get(
+    "/{project_id}",
+    response_model=ProjectResponse,
+    responses={
+        403: {"description": "Sin membresía activa en el proyecto"},
+        404: {"description": "Proyecto no encontrado"},
+    },
+)
+async def get_project(
+    project_id: UUID,
+    membership: ProjectMembership,
+    db: DB,
+):
+    """
+    Detalle de un proyecto. Cualquier miembro activo puede leer (incluye
+    viewer). Mismo patrón de acceso que list_members/member_history —
+    reutiliza get_project_member vía ProjectMembership (403 si no hay
+    membresía, 404 si el proyecto no existe o está eliminado).
+
+    Cierra el gap arrastrado de Sprint 3: el tablero de Frontend
+    (BoardPage.jsx) dependía de location.state para mostrar nombre/rol
+    del proyecto, lo que se rompía con F5 o un link compartido directo.
+    """
+    repo = ProjectRepository(db)
+    project = await repo.get_active(project_id)
+    if not project:
+        raise AppBaseError("NOT_FOUND", "Proyecto no encontrado.", 404)
+
+    count_result = await db.execute(
+        select(func.count(ProjectMember.id)).where(
+            ProjectMember.project_id == project_id,
+            ProjectMember.removed_at.is_(None),
+        )
+    )
+    member_count = count_result.scalar_one()
+
+    return ProjectResponse.from_orm(
+        project, my_role=membership.role, member_count=member_count
+    )
+
+
 @router.patch(
     "/{project_id}",
     response_model=ProjectResponse,
@@ -545,3 +588,69 @@ async def transfer_ownership(
         project_id, body.new_owner_id, current_user, membership
     )
     return MessageResponse(message="Ownership transferido exitosamente.")
+
+
+# ── Invitaciones (E03 · Sprint 4 · Objetivos 7 y 9) ───────────────────────
+# La tabla project_invitations y el modelo ProjectInvitation ya existían
+# desde la migración 0001 (Sprint 1, DU-02) — nunca se habían wireado
+# repository/service/endpoints. accept/reject viven en su propio router
+# (invitations.py) porque no dependen de un project_id en la URL: el token
+# es suficiente para resolver todo.
+
+
+@router.post(
+    "/{project_id}/invitations",
+    response_model=InvitationOut,
+    status_code=201,
+    responses={
+        403: {"description": "Sin permisos — solo owner o admin puede invitar"},
+        404: {"description": "Proyecto no encontrado"},
+        409: {"description": "INVITATION_ALREADY_PENDING o MEMBER_ALREADY_EXISTS"},
+        429: {"description": "INVITATION_RATE_LIMIT_EXCEEDED — máximo 10/proyecto/día"},
+    },
+)
+async def create_invitation(
+    project_id: UUID,
+    body: InvitationCreate,
+    current_user: CurrentUser,
+    membership: ProjectMembership,
+    db: DB,
+):
+    """Invita por email a colaborar en el proyecto. Rol limitado a
+    viewer/editor (nunca owner/admin — previene escalada de privilegios,
+    mismo riesgo que ya se cubrió en E03 para add_member)."""
+    service = InvitationService(db)
+    return await service.create_invitation(
+        project_id=project_id,
+        email=body.email,
+        role=body.role,
+        actor=current_user,
+        membership=membership,
+    )
+
+
+@router.delete(
+    "/{project_id}/invitations/{invitation_id}",
+    status_code=204,
+    responses={
+        403: {"description": "Sin permisos — solo owner o admin puede cancelar"},
+        404: {"description": "Invitación no encontrada"},
+        409: {"description": "Solo se pueden cancelar invitaciones pendientes"},
+    },
+)
+async def cancel_invitation(
+    project_id: UUID,
+    invitation_id: UUID,
+    current_user: CurrentUser,
+    membership: ProjectMembership,
+    db: DB,
+):
+    """Cancela una invitación pendiente. Queda marcada 'expired' (no se
+    borra el registro) — trazabilidad. R-0308/R-0309"""
+    service = InvitationService(db)
+    await service.cancel_invitation(
+        project_id=project_id,
+        invitation_id=invitation_id,
+        actor=current_user,
+        membership=membership,
+    )

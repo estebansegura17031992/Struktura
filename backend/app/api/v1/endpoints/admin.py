@@ -19,7 +19,8 @@ from app.api.deps.auth import DB, AdminUser, CurrentUser
 from app.core.exceptions import AppBaseError, UserNotFoundError
 from app.core.logging import get_logger
 from app.models.user import User
-from app.schemas.common import PaginatedResponse
+from app.repositories.timer_repository import TimerRepository
+from app.schemas.common import MessageResponse, PaginatedResponse
 from app.schemas.user import UserResponse
 from app.services.audit_service import log_action
 
@@ -158,3 +159,42 @@ async def change_user_role(
     )
 
     return UserResponse.model_validate(updated)
+
+
+@router.post(
+    "/users/{user_id}/timer/stop",
+    response_model=MessageResponse,
+    responses={404: {"description": "El usuario no tiene un timer activo"}},
+)
+async def admin_stop_timer(
+    user_id: UUID,
+    current_user: CurrentUser,
+    _: AdminUser,
+    db: DB,
+):
+    """Detiene el timer activo de cualquier usuario — intervención manual de
+    admin (Sprint 4 · Objetivo 6). Registra audit_logs con action=
+    'admin_stop_timer' y metadata {admin_id, target_user_id}."""
+    timer_repo = TimerRepository(db)
+    entry = await timer_repo.get_active_for_user(user_id)
+    if entry is None:
+        raise AppBaseError(
+            "NOT_FOUND", "El usuario no tiene un cronómetro activo.", 404
+        )
+
+    await timer_repo.close(entry, reason="admin_stop")
+    await log_action(
+        db,
+        action="admin_stop_timer",
+        user_id=current_user.id,
+        entity_type="task_time_entry",
+        entity_id=entry.id,
+        metadata={
+            "admin_id": str(current_user.id),
+            "target_user_id": str(user_id),
+            "task_id": str(entry.task_id),
+        },
+    )
+    await db.commit()
+
+    return MessageResponse(message="Cronómetro detenido correctamente.")

@@ -14,6 +14,7 @@ ASUNCIÓN A VALIDAR CON PM/UX (no bloquea el contrato, pero Frontend debe saberl
   migración futura. `is_active` de cada assignee se deriva de `users.deleted_at
   IS NULL` (no es una columna nueva).
 """
+
 from __future__ import annotations
 
 from datetime import date, datetime
@@ -53,7 +54,8 @@ class TaskAssigneeOut(BaseModel):
         description="URL del avatar. Nullable hasta que Producto defina el origen (ver nota de asunción arriba).",
     )
     is_active: bool = Field(
-        ..., description="False si la cuenta del usuario asignado tiene soft-delete (users.deleted_at)."
+        ...,
+        description="False si la cuenta del usuario asignado tiene soft-delete (users.deleted_at).",
     )
 
 
@@ -67,7 +69,8 @@ class TaskCreate(BaseModel):
     project_id: UUID
     due_date: date | None = None
     timer_disabled: bool = Field(
-        default=False, description="ADR-03. Si el proyecto no usa cronómetro para esta tarea."
+        default=False,
+        description="ADR-03. Si el proyecto no usa cronómetro para esta tarea.",
     )
     assignee_ids: list[UUID] = Field(
         default_factory=list,
@@ -124,7 +127,10 @@ class TaskOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: UUID
-    task_number: int = Field(..., description="SERIAL global, visible en UI como identificador corto (AG-05).")
+    task_number: int = Field(
+        ...,
+        description="SERIAL global, visible en UI como identificador corto (AG-05).",
+    )
     title: str
     description: str | None = None
     priority: TaskPriority

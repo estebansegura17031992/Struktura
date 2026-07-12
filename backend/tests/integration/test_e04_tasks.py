@@ -24,13 +24,17 @@ from app.models.user import User
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-async def _register(client: AsyncClient, email: str, username: str, password: str = "Test1234!") -> str:
+async def _register(
+    client: AsyncClient, email: str, username: str, password: str = "Test1234!"
+) -> str:
     captured = {}
 
     async def fake_send(e, u, code):
         captured["code"] = code
 
-    with patch("app.services.auth_service.send_verification_email", side_effect=fake_send):
+    with patch(
+        "app.services.auth_service.send_verification_email", side_effect=fake_send
+    ):
         resp = await client.post(
             "/api/v1/auth/register",
             json={
@@ -46,7 +50,9 @@ async def _register(client: AsyncClient, email: str, username: str, password: st
 
 
 async def _verify(client: AsyncClient, email: str, code: str) -> None:
-    resp = await client.post("/api/v1/auth/verify-email", json={"email": email, "code": code})
+    resp = await client.post(
+        "/api/v1/auth/verify-email", json={"email": email, "code": code}
+    )
     assert resp.status_code == 200, f"verify fallo ({resp.status_code}): {resp.text}"
 
 
@@ -59,12 +65,16 @@ async def _register_and_verify(
 
 
 async def _login(client: AsyncClient, email: str, password: str = "Test1234!") -> str:
-    resp = await client.post("/api/v1/auth/login", json={"email": email, "password": password})
+    resp = await client.post(
+        "/api/v1/auth/login", json={"email": email, "password": password}
+    )
     assert resp.status_code == 200, f"login fallo ({resp.status_code}): {resp.text}"
     return resp.json()["access_token"]
 
 
-async def _headers(client: AsyncClient, email: str, password: str = "Test1234!") -> dict:
+async def _headers(
+    client: AsyncClient, email: str, password: str = "Test1234!"
+) -> dict:
     token = await _login(client, email, password)
     return {"Authorization": f"Bearer {token}"}
 
@@ -80,27 +90,41 @@ async def _me_id(client: AsyncClient, headers: dict) -> str:
     return resp.json()["id"]
 
 
-async def _create_project(client: AsyncClient, headers: dict, name: str = "Proyecto Test E04") -> dict:
+async def _create_project(
+    client: AsyncClient, headers: dict, name: str = "Proyecto Test E04"
+) -> dict:
     resp = await client.post("/api/v1/projects", json={"name": name}, headers=headers)
-    assert resp.status_code == 201, f"create_project fallo ({resp.status_code}): {resp.text}"
+    assert (
+        resp.status_code == 201
+    ), f"create_project fallo ({resp.status_code}): {resp.text}"
     return resp.json()
 
 
-async def _add_member(client: AsyncClient, owner_headers: dict, project_id: str, user_id: str, role: str) -> None:
+async def _add_member(
+    client: AsyncClient, owner_headers: dict, project_id: str, user_id: str, role: str
+) -> None:
     resp = await client.post(
         f"/api/v1/projects/{project_id}/members",
         json={"user_id": user_id, "role": role},
         headers=owner_headers,
     )
-    assert resp.status_code == 201, f"add_member fallo ({resp.status_code}): {resp.text}"
+    assert (
+        resp.status_code == 201
+    ), f"add_member fallo ({resp.status_code}): {resp.text}"
 
 
 async def _create_task(
-    client: AsyncClient, headers: dict, project_id: str, title: str = "Tarea de prueba", **extra
+    client: AsyncClient,
+    headers: dict,
+    project_id: str,
+    title: str = "Tarea de prueba",
+    **extra,
 ) -> dict:
     body = {"title": title, "priority": "medium", "project_id": project_id, **extra}
     resp = await client.post("/api/v1/tasks", json=body, headers=headers)
-    assert resp.status_code == 201, f"create_task fallo ({resp.status_code}): {resp.text}"
+    assert (
+        resp.status_code == 201
+    ), f"create_task fallo ({resp.status_code}): {resp.text}"
     return resp.json()
 
 
@@ -224,7 +248,9 @@ async def test_soft_delete_tarea(client, db_session: AsyncSession):
 
     result = await db_session.execute(select(Task).where(Task.id == UUID(task["id"])))
     t = result.scalar_one_or_none()
-    assert t is not None and t.deleted_at is not None, "deleted_at debe estar establecido (soft delete real)"
+    assert (
+        t is not None and t.deleted_at is not None
+    ), "deleted_at debe estar establecido (soft delete real)"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -240,7 +266,9 @@ async def test_editor_cambia_estado(client):
     task = await _create_task(client, headers, project["id"])
 
     resp = await client.patch(
-        f"/api/v1/tasks/{task['id']}/status", json={"status": "en_proceso"}, headers=headers
+        f"/api/v1/tasks/{task['id']}/status",
+        json={"status": "en_proceso"},
+        headers=headers,
     )
     assert resp.status_code == 200, f"status update fallo: {resp.text}"
     assert resp.json()["status"] == "en_proceso"
@@ -261,9 +289,13 @@ async def test_viewer_asignado_no_puede_cambiar_estado(client):
     task = await _create_task(client, owner_h, project["id"], assignee_ids=[viewer_id])
 
     resp = await client.patch(
-        f"/api/v1/tasks/{task['id']}/status", json={"status": "en_proceso"}, headers=viewer_h
+        f"/api/v1/tasks/{task['id']}/status",
+        json={"status": "en_proceso"},
+        headers=viewer_h,
     )
-    assert resp.status_code == 403, "Viewer asignado NO puede cambiar estado (regla explicita)"
+    assert (
+        resp.status_code == 403
+    ), "Viewer asignado NO puede cambiar estado (regla explicita)"
 
 
 @pytest.mark.asyncio
@@ -276,7 +308,9 @@ async def test_cambio_estado_registra_audit_log(client, db_session: AsyncSession
     task = await _create_task(client, headers, project["id"])
 
     await client.patch(
-        f"/api/v1/tasks/{task['id']}/status", json={"status": "completo"}, headers=headers
+        f"/api/v1/tasks/{task['id']}/status",
+        json={"status": "completo"},
+        headers=headers,
     )
 
     result = await db_session.execute(
@@ -305,7 +339,9 @@ async def test_listar_tareas_filtra_por_prioridad(client):
     await _create_task(client, headers, project["id"], title="Baja", priority="low")
 
     resp = await client.get(
-        "/api/v1/tasks", params={"project_id": project["id"], "priority": "high"}, headers=headers
+        "/api/v1/tasks",
+        params={"project_id": project["id"], "priority": "high"},
+        headers=headers,
     )
     assert resp.status_code == 200
     titles = [t["title"] for t in resp.json()["items"]]
@@ -319,7 +355,9 @@ async def test_busqueda_fts_menos_de_2_caracteres_retorna_422(client):
     project = await _create_project(client, headers)
 
     resp = await client.get(
-        "/api/v1/tasks", params={"project_id": project["id"], "search": "a"}, headers=headers
+        "/api/v1/tasks",
+        params={"project_id": project["id"], "search": "a"},
+        headers=headers,
     )
     assert resp.status_code == 422, "Busqueda de 1 caracter debe retornar 422"
 
@@ -330,11 +368,15 @@ async def test_busqueda_fts_encuentra_por_titulo(client):
     headers = await _headers(client, owner["email"])
     project = await _create_project(client, headers)
 
-    await _create_task(client, headers, project["id"], title="Migracion de base de datos")
+    await _create_task(
+        client, headers, project["id"], title="Migracion de base de datos"
+    )
     await _create_task(client, headers, project["id"], title="Diseno de interfaz")
 
     resp = await client.get(
-        "/api/v1/tasks", params={"project_id": project["id"], "search": "migracion"}, headers=headers
+        "/api/v1/tasks",
+        params={"project_id": project["id"], "search": "migracion"},
+        headers=headers,
     )
     assert resp.status_code == 200
     titles = [t["title"] for t in resp.json()["items"]]
@@ -353,7 +395,9 @@ async def test_viewer_solo_puede_filtrar_assigned_to_me(client):
     await _add_member(client, owner_h, project["id"], viewer_id, "viewer")
 
     resp_me = await client.get(
-        "/api/v1/tasks", params={"project_id": project["id"], "assigned_to": "me"}, headers=viewer_h
+        "/api/v1/tasks",
+        params={"project_id": project["id"], "assigned_to": "me"},
+        headers=viewer_h,
     )
     assert resp_me.status_code == 200, "Viewer puede filtrar assigned_to=me"
 
@@ -389,7 +433,9 @@ async def test_asignar_mas_del_maximo_retorna_422(client):
 
 
 @pytest.mark.asyncio
-async def test_adr03_detiene_timer_al_pasar_a_dos_asignados(client, db_session: AsyncSession):
+async def test_adr03_detiene_timer_al_pasar_a_dos_asignados(
+    client, db_session: AsyncSession
+):
     """ADR-03: al pasar de 1 a 2+ asignados con timer activo, se detiene
     automaticamente, se registra audit_log y timer_disabled queda en true."""
     owner = await _register_and_verify(client, "t16@test.dev", "t16owner")
@@ -422,7 +468,9 @@ async def test_adr03_detiene_timer_al_pasar_a_dos_asignados(client, db_session: 
         headers=owner_h,
     )
     assert resp.status_code == 200, f"update assignees fallo: {resp.text}"
-    assert resp.json()["timer_disabled"] is True, "timer_disabled debe quedar en true con 2+ asignados"
+    assert (
+        resp.json()["timer_disabled"] is True
+    ), "timer_disabled debe quedar en true con 2+ asignados"
 
     result = await db_session.execute(
         select(TaskTimeEntry).where(TaskTimeEntry.id == active_entry.id)
@@ -436,7 +484,9 @@ async def test_adr03_detiene_timer_al_pasar_a_dos_asignados(client, db_session: 
     audit_result = await db_session.execute(
         select(AuditLog).where(AuditLog.action == "timer_stopped_multi_assignee")
     )
-    assert audit_result.scalar_one_or_none() is not None, "Debe registrarse en audit_logs"
+    assert (
+        audit_result.scalar_one_or_none() is not None
+    ), "Debe registrarse en audit_logs"
 
 
 @pytest.mark.asyncio
@@ -454,7 +504,9 @@ async def test_bajar_a_un_asignado_reactiva_timer(client):
     task = await _create_task(
         client, owner_h, project["id"], assignee_ids=[owner_id, member2_id]
     )
-    assert task["timer_disabled"] is True, "2 asignados desde la creacion debe deshabilitar timer"
+    assert (
+        task["timer_disabled"] is True
+    ), "2 asignados desde la creacion debe deshabilitar timer"
 
     resp = await client.patch(
         f"/api/v1/tasks/{task['id']}/assignees",
@@ -462,4 +514,6 @@ async def test_bajar_a_un_asignado_reactiva_timer(client):
         headers=owner_h,
     )
     assert resp.status_code == 200
-    assert resp.json()["timer_disabled"] is False, "Al bajar a 1 asignado, timer_disabled vuelve a false"
+    assert (
+        resp.json()["timer_disabled"] is False
+    ), "Al bajar a 1 asignado, timer_disabled vuelve a false"

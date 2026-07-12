@@ -18,6 +18,7 @@ Revision ID: 0003
 Revises: 0002
 Create Date: 2026-07-01
 """
+
 from alembic import op
 
 # --- Alembic identifiers -----------------------------------------------

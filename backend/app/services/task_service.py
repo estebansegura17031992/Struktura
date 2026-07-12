@@ -7,6 +7,7 @@ Security revisa (pedido explícito del PM).
 
 Ubicación en el repo: backend/app/services/task_service.py
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -138,7 +139,9 @@ class TaskService:
     async def get_task(self, task_id: UUID) -> TaskOut:
         return await self._to_task_out(task_id)
 
-    async def update_task(self, task_id: UUID, *, payload: TaskUpdate, actor_id: UUID) -> TaskOut:
+    async def update_task(
+        self, task_id: UUID, *, payload: TaskUpdate, actor_id: UUID
+    ) -> TaskOut:
         existing = await self._repo.get_active(task_id)
         if existing is None:
             raise AppBaseError("NOT_FOUND", "Tarea no encontrada.", 404)
@@ -242,7 +245,9 @@ class TaskService:
                     assigned_to_user_id = UUID(assigned_to)
                 except ValueError:
                     raise AppBaseError(
-                        "VALIDATION_ERROR", "assigned_to debe ser 'me' o un UUID válido.", 422
+                        "VALIDATION_ERROR",
+                        "assigned_to debe ser 'me' o un UUID válido.",
+                        422,
                     ) from None
 
         page_size_applied = min(max(page_size, 1), 50)  # R-0405: máx 50 por columna
@@ -289,7 +294,9 @@ class TaskService:
             total_pages=total_pages,
             next_page=page + 1 if page < total_pages else None,
             previous_page=page - 1 if page > 1 else None,
-            page_size_applied=page_size_applied if page_size_applied != page_size else None,
+            page_size_applied=page_size_applied
+            if page_size_applied != page_size
+            else None,
         )
 
     # ── Asignación múltiple + ADR-03 (R-0407) ───────────────────────────

@@ -22,6 +22,7 @@ lógica de permisos inline en los endpoints, por pedido explícito del PM.
 
 Ubicación en el repo: backend/app/api/v1/endpoints/tasks.py
 """
+
 from datetime import date
 from typing import Annotated
 from uuid import UUID
@@ -103,7 +104,9 @@ async def get_project_member_for_create(
 
 
 async def get_project_member_for_list(
-    project_id: Annotated[UUID, Query(..., description="Proyecto a listar (requerido)")],
+    project_id: Annotated[
+        UUID, Query(..., description="Proyecto a listar (requerido)")
+    ],
     current_user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> ProjectMember:
@@ -168,9 +171,13 @@ TaskMembership = Annotated[ProjectMember, Depends(get_task_project_member)]
     response_model=TaskOut,
     status_code=201,
     responses={
-        403: {"description": "Sin permisos — solo owner o editor del proyecto puede crear"},
+        403: {
+            "description": "Sin permisos — solo owner o editor del proyecto puede crear"
+        },
         404: {"description": "Proyecto no encontrado"},
-        422: {"description": "MAX_ASSIGNEES_EXCEEDED — supera system_settings.max_task_assignees"},
+        422: {
+            "description": "MAX_ASSIGNEES_EXCEEDED — supera system_settings.max_task_assignees"
+        },
     },
 )
 async def create_task(
@@ -261,7 +268,9 @@ async def update_task(
     body: TaskUpdate,
     current_user: CurrentUser,
     db: DB,
-    _membership: Annotated[ProjectMember, Depends(require_task_role("owner", "editor"))],
+    _membership: Annotated[
+        ProjectMember, Depends(require_task_role("owner", "editor"))
+    ],
 ):
     """Edición parcial de tarea. Requiere rol owner o editor. R-0401"""
     service = TaskService(db)
@@ -279,7 +288,9 @@ async def update_task(
 async def delete_task(
     task_id: UUID,
     db: DB,
-    _membership: Annotated[ProjectMember, Depends(require_task_role("owner", "editor"))],
+    _membership: Annotated[
+        ProjectMember, Depends(require_task_role("owner", "editor"))
+    ],
 ):
     """Soft delete (deleted_at). Sin recuperación por UI (AG-04). R-0401"""
     service = TaskService(db)
@@ -290,7 +301,9 @@ async def delete_task(
     "/{task_id}/status",
     response_model=TaskOut,
     responses={
-        403: {"description": "Sin permisos — editor/admin o asignado (viewer nunca puede)"},
+        403: {
+            "description": "Sin permisos — editor/admin o asignado (viewer nunca puede)"
+        },
         404: {"description": "Tarea no encontrada"},
     },
 )
@@ -321,9 +334,13 @@ async def update_task_assignees(
     body: TaskAssigneesUpdate,
     current_user: CurrentUser,
     db: DB,
-    _membership: Annotated[ProjectMember, Depends(require_task_role("owner", "editor"))],
+    _membership: Annotated[
+        ProjectMember, Depends(require_task_role("owner", "editor"))
+    ],
 ):
     """Reemplaza el set de asignados. ADR-03: al pasar de 1 a 2+ asignados con
     timer activo, se detiene automáticamente y queda registrado en audit_logs. R-0407"""
     service = TaskService(db)
-    return await service.update_assignees(task_id, payload=body, actor_id=current_user.id)
+    return await service.update_assignees(
+        task_id, payload=body, actor_id=current_user.id
+    )

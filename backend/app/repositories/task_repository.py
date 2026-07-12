@@ -6,6 +6,7 @@ real `app/models/task.py` no las define.
 
 Ubicación en el repo: backend/app/repositories/task_repository.py
 """
+
 from __future__ import annotations
 
 from collections.abc import Sequence
@@ -68,7 +69,10 @@ class TaskRepository(BaseRepository[Task]):
         page_size: int = 20,
     ) -> tuple[list[Task], int]:
         """Filtros combinables (AND). `search` usa el índice GIN de search_vector (R-0404)."""
-        conditions: list[Any] = [Task.project_id == project_id, Task.deleted_at.is_(None)]
+        conditions: list[Any] = [
+            Task.project_id == project_id,
+            Task.deleted_at.is_(None),
+        ]
 
         if priority is not None:
             conditions.append(Task.priority == priority)
@@ -84,9 +88,9 @@ class TaskRepository(BaseRepository[Task]):
             # Se usa SQL crudo con bindparam en vez de Task.search_vector para no
             # depender de un atributo que no existe en la clase declarativa.
             conditions.append(
-                text("tasks.search_vector @@ plainto_tsquery('spanish', :fts_search)").bindparams(
-                    fts_search=search
-                )
+                text(
+                    "tasks.search_vector @@ plainto_tsquery('spanish', :fts_search)"
+                ).bindparams(fts_search=search)
             )
 
         base_q = select(Task).where(and_(*conditions))

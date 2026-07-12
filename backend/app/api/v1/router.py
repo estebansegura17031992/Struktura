@@ -1,7 +1,8 @@
-﻿"""
+"""
 Router principal de la API v1.
 Agrega todos los sub-routers de cada dominio.
 """
+
 from fastapi import APIRouter
 
 from app.api.v1.endpoints import (  # Sprint 2 + E04

@@ -3,22 +3,27 @@
  * Pantalla: Tablero Kanban de un proyecto
  * Sprint 3 · E04 · R-0401, R-0403, R-0406, AG-03, DU-03
  *
- * Layout fiel al mockup aprobado (artefacto 10):
- *  - Mismo patrón de header + sidebar que ProjectsPage/ProjectMembersPage
- *  - 3 columnas siempre visibles (abierto / en_proceso / completo)
- *  - Barra de filtros: prioridad, asignado (viewer forzado a "me"), búsqueda FTS
- *  - Empty state por columna: CTA solo en "Abierto" sin filtro (AG-03),
- *    "Sin tareas con este filtro" cuando hay filtros activos (DU-03)
+ * Desktop (md: y superior) — layout fiel al mockup aprobado (artefacto 10):
+ *  - Sidebar + header, mismo patrón que ProjectsPage/ProjectMembersPage
+ *  - 3 columnas siempre visibles con drag & drop (artefacto 11, R-0402,
+ *    @dnd-kit/core). Cada columna es zona de drop activa aunque esté vacía
+ *    (DU-03). Cambio de estado optimista con rollback si el backend rechaza
+ *    el movimiento (403).
  *
- * Drag & drop (artefacto 11, R-0402): @dnd-kit/core. Cada TaskCard es
- * arrastrable, cada columna es zona de drop (activa aunque esté vacía —
- * DU-03). El cambio de estado es optimista con rollback si el backend
- * rechaza el movimiento (403 — viewer nunca puede, ni owner/editor puede
- * mover a un estado que no exista). Solo owner/editor pueden arrastrar
- * (mismo gate que `canCreate`, igual que el backend en
- * require_task_status_permission — viewer nunca puede, ni siquiera
- * estando asignado). En mobile, el modal de edición (artefacto 14) ya
- * ofrece un <select> de estado como alternativa al drag & drop.
+ * Mobile (< md:) — layout fiel al mockup de la vista tablero móvil:
+ *  - Sin sidebar. Tabs horizontales (Abierto/En proceso/Completo) en vez de
+ *    3 columnas simultáneas — no hay drag & drop entre columnas porque solo
+ *    una es visible a la vez.
+ *  - FAB "+" fijo para "Nueva tarea" (reemplaza el botón del top bar).
+ *  - TaskActionSheet (bottom sheet) reemplaza el drag: "Mover a…", "Editar
+ *    tarea", "Eliminar" — este es el mecanismo real de ADR-04 para mobile,
+ *    no el drag con long-press (que sigue existiendo pero es secundario:
+ *    solo aplica si en algún momento se muestran 2+ columnas en pantallas
+ *    intermedias).
+ *
+ * Solo owner/editor pueden arrastrar/cambiar estado/eliminar (mismo gate que
+ * `canCreate`, igual que el backend en require_task_status_permission —
+ * viewer nunca puede, ni siquiera estando asignado).
  */
 import React, { useEffect, useState } from "react";
 import { Link, useNavigate, useParams, useLocation } from "react-router-dom";
@@ -30,7 +35,9 @@ import { useAuthStore } from "@/store/authStore";
 import { logoutUser } from "@/api/auth";
 import { useTasks } from "@/hooks/useTasks";
 import { useMembers } from "@/hooks/useMembers";
-import { TaskCard, TaskCardSkeleton, EmptyColumn, TaskFormModal } from "@/components/tasks/TaskComponents";
+import {
+  TaskCard, TaskCardSkeleton, EmptyColumn, TaskActionSheet, TaskFormModal,
+} from "@/components/tasks/TaskComponents";
 
 // ── Drag & drop wrappers ─────────────────────────────────────────────────────
 
@@ -121,11 +128,15 @@ export default function BoardPage() {
   // miembros activos pueden asignarse a tareas nuevas, R-0401).
   const { members } = useMembers(projectId);
 
-  // ── Drag & drop ────────────────────────────────────────────────────────
+  // ── Mobile: tabs + bottom sheet (ADR-04) ──────────────────────────────
+  const [activeStatus, setActiveStatus] = useState("abierto");
+  const [actionSheetTask, setActionSheetTask] = useState(null);
+
+  // ── Drag & drop (desktop) ──────────────────────────────────────────────
   const [activeTask, setActiveTask] = useState(null);
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
-    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 8 } })
+    useSensor(TouchSensor, { activationConstraint: { delay: 300, tolerance: 8 } }) // ADR-04: long-press 300ms
   );
   const allTasks = COLUMNS.flatMap((c) => columns[c.status] ?? []);
 
@@ -184,9 +195,9 @@ export default function BoardPage() {
 
       <div className="flex flex-1 min-h-[calc(100vh-57px)]">
 
-        {/* Sidebar */}
+        {/* Sidebar — oculto en mobile (mockup usa tabs + bottom sheet en su lugar) */}
         <aside
-          className="w-60 shrink-0 flex flex-col py-4 sticky top-[57px] h-[calc(100vh-57px)] overflow-y-auto"
+          className="hidden md:flex w-60 shrink-0 flex-col py-4 sticky top-[57px] h-[calc(100vh-57px)] overflow-y-auto"
           style={{ background: "#111316", borderRight: "1px solid #2D3135" }}
         >
           <nav className="flex flex-col gap-0.5 px-3 flex-1">
@@ -237,7 +248,7 @@ export default function BoardPage() {
               {canCreate && (
                 <button
                   onClick={openCreateTask}
-                  className="flex items-center gap-2 px-5 py-2.5 rounded-full font-semibold text-sm transition-opacity hover:opacity-90"
+                  className="hidden md:flex items-center gap-2 px-5 py-2.5 rounded-full font-semibold text-sm transition-opacity hover:opacity-90"
                   style={{ background: "#da7726", color: "#461f00" }}
                 >
                   <span className="material-symbols-outlined text-[18px]">add</span>
@@ -303,89 +314,173 @@ export default function BoardPage() {
             )}
           </div>
 
-          {/* Board */}
-          <div className="flex-1 overflow-x-auto p-6">
-            {dragError && (
-              <div
-                className="mb-4 px-4 py-3 rounded-xl flex items-center gap-3"
-                style={{ background: "rgba(255,180,171,0.1)", border: "1px solid rgba(255,180,171,0.3)" }}
-              >
-                <span className="material-symbols-outlined text-error text-[18px]">error</span>
-                <span className="text-error text-sm">{dragError}</span>
-              </div>
-            )}
-            {error ? (
-              <div
-                className="px-5 py-4 rounded-xl flex items-center gap-3"
-                style={{ background: "rgba(255,180,171,0.1)", border: "1px solid rgba(255,180,171,0.3)" }}
-              >
-                <span className="material-symbols-outlined text-error">error</span>
-                <span className="text-error text-sm flex-1">{error}</span>
-                <button onClick={refresh} className="text-error text-sm font-bold underline underline-offset-2">
-                  Reintentar
-                </button>
-              </div>
-            ) : (
-              <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 h-full min-w-[900px] md:min-w-0">
-                  {COLUMNS.map((col) => {
-                    const items = columns[col.status] ?? [];
-                    return (
-                      <div key={col.status} className="flex flex-col gap-4">
-                        <div
-                          className="flex justify-between items-center px-4 py-2 rounded-lg"
-                          style={{ background: "#1e2023", border: "1px solid rgba(85,67,55,0.15)" }}
-                        >
-                          <div className="flex items-center gap-2">
-                            <span className="w-2 h-2 rounded-full" style={{ background: col.dot }} />
-                            <h2 className="text-xs font-bold tracking-wider text-on-surface uppercase">{col.label}</h2>
-                          </div>
-                          <span
-                            className="px-2 py-0.5 rounded text-xs font-bold text-on-surface-variant"
-                            style={{ background: "#333538" }}
-                          >
-                            {loading ? "…" : items.length}
-                          </span>
-                        </div>
+          {/* Errores comunes a ambos layouts */}
+          {(dragError || error) && (
+            <div className="px-4 md:px-6 pt-4">
+              {dragError && (
+                <div
+                  className="mb-4 px-4 py-3 rounded-xl flex items-center gap-3"
+                  style={{ background: "rgba(255,180,171,0.1)", border: "1px solid rgba(255,180,171,0.3)" }}
+                >
+                  <span className="material-symbols-outlined text-error text-[18px]">error</span>
+                  <span className="text-error text-sm">{dragError}</span>
+                </div>
+              )}
+              {error && (
+                <div
+                  className="px-5 py-4 rounded-xl flex items-center gap-3"
+                  style={{ background: "rgba(255,180,171,0.1)", border: "1px solid rgba(255,180,171,0.3)" }}
+                >
+                  <span className="material-symbols-outlined text-error">error</span>
+                  <span className="text-error text-sm flex-1">{error}</span>
+                  <button onClick={refresh} className="text-error text-sm font-bold underline underline-offset-2">
+                    Reintentar
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
 
-                        <DroppableColumn status={col.status}>
-                          {loading ? (
-                            Array.from({ length: 2 }).map((_, i) => <TaskCardSkeleton key={i} />)
-                          ) : items.length === 0 ? (
-                            <EmptyColumn
-                              status={col.status}
-                              isFiltered={hasActiveFilters}
-                              onCreateClick={canCreate ? openCreateTask : undefined}
-                              onClearFilters={hasActiveFilters ? clearFilters : undefined}
-                            />
-                          ) : (
-                            items.map((task) => (
-                              <DraggableTaskCard
-                                key={task.id}
-                                task={task}
-                                disabled={!canCreate}
-                                onOpen={canCreate ? openEditTask : undefined}
+          {!error && (
+            <>
+              {/* ── Board desktop: 3 columnas + drag & drop ─────────────────── */}
+              <div className="hidden md:block flex-1 overflow-x-auto p-6">
+                <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6 h-full min-w-[900px] md:min-w-0">
+                    {COLUMNS.map((col) => {
+                      const items = columns[col.status] ?? [];
+                      return (
+                        <div key={col.status} className="flex flex-col gap-4">
+                          <div
+                            className="flex justify-between items-center px-4 py-2 rounded-lg"
+                            style={{ background: "#1e2023", border: "1px solid rgba(85,67,55,0.15)" }}
+                          >
+                            <div className="flex items-center gap-2">
+                              <span className="w-2 h-2 rounded-full" style={{ background: col.dot }} />
+                              <h2 className="text-xs font-bold tracking-wider text-on-surface uppercase">{col.label}</h2>
+                            </div>
+                            <span
+                              className="px-2 py-0.5 rounded text-xs font-bold text-on-surface-variant"
+                              style={{ background: "#333538" }}
+                            >
+                              {loading ? "…" : items.length}
+                            </span>
+                          </div>
+
+                          <DroppableColumn status={col.status}>
+                            {loading ? (
+                              Array.from({ length: 2 }).map((_, i) => <TaskCardSkeleton key={i} />)
+                            ) : items.length === 0 ? (
+                              <EmptyColumn
+                                status={col.status}
+                                isFiltered={hasActiveFilters}
+                                onCreateClick={canCreate ? openCreateTask : undefined}
+                                onClearFilters={hasActiveFilters ? clearFilters : undefined}
                               />
-                            ))
-                          )}
-                        </DroppableColumn>
+                            ) : (
+                              items.map((task) => (
+                                <DraggableTaskCard
+                                  key={task.id}
+                                  task={task}
+                                  disabled={!canCreate}
+                                  onOpen={canCreate ? openEditTask : undefined}
+                                />
+                              ))
+                            )}
+                          </DroppableColumn>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  <DragOverlay>
+                    {activeTask && (
+                      <div style={{ transform: "rotate(2deg)", boxShadow: "0 12px 32px rgba(0,0,0,0.5)" }}>
+                        <TaskCard task={activeTask} />
                       </div>
+                    )}
+                  </DragOverlay>
+                </DndContext>
+              </div>
+
+              {/* ── Board mobile: tabs + una columna + bottom sheet (ADR-04) ── */}
+              <div className="md:hidden flex-1 flex flex-col overflow-hidden">
+                <div
+                  className="flex overflow-x-auto no-scrollbar border-b flex-shrink-0"
+                  style={{ borderColor: "#2D3135" }}
+                >
+                  {COLUMNS.map((col) => {
+                    const count = columns[col.status]?.length ?? 0;
+                    const active = activeStatus === col.status;
+                    return (
+                      <button
+                        key={col.status}
+                        onClick={() => setActiveStatus(col.status)}
+                        className="flex-none px-5 py-3 text-sm font-medium whitespace-nowrap border-b-2 transition-colors"
+                        style={active
+                          ? { borderColor: col.dot, color: col.dot }
+                          : { borderColor: "transparent", color: "#dcc1b2" }}
+                      >
+                        {col.label} ({loading ? "…" : count})
+                      </button>
                     );
                   })}
                 </div>
 
-                <DragOverlay>
-                  {activeTask && (
-                    <div style={{ transform: "rotate(2deg)", boxShadow: "0 12px 32px rgba(0,0,0,0.5)" }}>
-                      <TaskCard task={activeTask} />
-                    </div>
+                <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-3">
+                  {loading ? (
+                    Array.from({ length: 2 }).map((_, i) => <TaskCardSkeleton key={i} />)
+                  ) : (columns[activeStatus]?.length ?? 0) === 0 ? (
+                    <EmptyColumn
+                      status={activeStatus}
+                      isFiltered={hasActiveFilters}
+                      onCreateClick={canCreate ? openCreateTask : undefined}
+                      onClearFilters={hasActiveFilters ? clearFilters : undefined}
+                    />
+                  ) : (
+                    columns[activeStatus].map((task) => (
+                      <TaskCard
+                        key={task.id}
+                        task={task}
+                        onOpen={canCreate ? openEditTask : undefined}
+                        onMore={canCreate ? setActionSheetTask : undefined}
+                      />
+                    ))
                   )}
-                </DragOverlay>
-              </DndContext>
-            )}
-          </div>
+                </div>
+              </div>
+            </>
+          )}
         </main>
       </div>
+
+      {/* FAB "Nueva tarea" — mobile, reemplaza el botón del top bar */}
+      {canCreate && (
+        <button
+          onClick={openCreateTask}
+          className="md:hidden fixed bottom-6 right-6 w-14 h-14 rounded-full shadow-lg flex items-center justify-center active:scale-90 transition-transform z-40"
+          style={{ background: "#da7726", color: "#461f00" }}
+          aria-label="Nueva tarea"
+        >
+          <span className="material-symbols-outlined text-[28px]">add</span>
+        </button>
+      )}
+
+      {/* Bottom sheet de acciones — mobile (ADR-04) */}
+      {actionSheetTask && (
+        <TaskActionSheet
+          task={actionSheetTask}
+          deleting={deleting}
+          deleteError={deleteError}
+          onChangeStatus={moveTask}
+          onEdit={openEditTask}
+          onDelete={async (taskId) => {
+            const ok = await submitDeleteTask(taskId);
+            if (ok) setActionSheetTask(null);
+          }}
+          onClose={() => setActionSheetTask(null)}
+        />
+      )}
 
       {/* ── Modales ─────────────────────────────────────────────────────────── */}
       {showCreate && (

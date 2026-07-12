@@ -192,20 +192,23 @@ export function useTasks(projectId) {
   const [deleting, setDeleting]     = useState(false);
   const [deleteError, setDeleteError] = useState(null);
 
-  const submitDeleteTask = useCallback(async () => {
-    if (!editingTask) return;
+  const submitDeleteTask = useCallback(async (taskId) => {
+    const id = taskId ?? editingTask?.id;
+    if (!id) return false;
     setDeleting(true);
     setDeleteError(null);
     try {
-      await deleteTask(editingTask.id);
-      setTasks((prev) => prev.filter((t) => t.id !== editingTask.id));
-      setEditingTask(null);
+      await deleteTask(id);
+      setTasks((prev) => prev.filter((t) => t.id !== id));
+      if (editingTask?.id === id) setEditingTask(null);
+      return true;
     } catch (e) {
       setDeleteError(
         e?.response?.status === 403
           ? "No tienes permisos para eliminar esta tarea."
           : "Error al eliminar la tarea. Intenta de nuevo."
       );
+      return false;
     } finally {
       setDeleting(false);
     }

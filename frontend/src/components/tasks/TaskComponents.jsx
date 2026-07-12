@@ -7,6 +7,7 @@
  *   TaskCard          — tarjeta Kanban (mockup #2)
  *   TaskCardSkeleton  — skeleton de carga
  *   EmptyColumn       — estado vacío por columna (con y sin filtro — AG-03/DU-03)
+ *   TaskActionSheet   — bottom sheet mobile (mockup vista tablero móvil, ADR-04)
  *   TaskFormModal     — drawer de creación/edición de tarea (mockups #14)
  *
  * NOTA (Backend real, no el mockup visual): el DTO actual de `TaskOut`
@@ -25,6 +26,14 @@ const PRIORITY_META = {
   medium: { label: "Media", dot: "#f6ba8b", color: "#f6ba8b", bg: "rgba(246,186,139,0.15)", border: "rgba(246,186,139,0.3)" },
   low:    { label: "Baja",  dot: "#a38c7e", color: "#dcc1b2", bg: "rgba(85,67,55,0.25)",    border: "rgba(163,140,126,0.3)" },
 };
+
+// ── Estado — compartido entre TaskCard (menú mobile) y TaskFormModal ──────────
+
+const STATUS_OPTIONS = [
+  { value: "abierto",    label: "Abierto",    dot: "#ffb786" },
+  { value: "en_proceso", label: "En proceso", dot: "#4cd7f2" },
+  { value: "completo",   label: "Completo",   dot: "#4ade80" },
+];
 
 function PriorityBadge({ priority }) {
   const m = PRIORITY_META[priority] ?? PRIORITY_META.low;
@@ -101,8 +110,11 @@ function AssigneeStack({ assignees = [] }) {
 }
 
 // ── TaskCard ───────────────────────────────────────────────────────────────────
+// El botón de 3 puntos abre el TaskActionSheet global (mockup mobile) — no
+// gestiona su propio popover para evitar múltiples menús flotantes en la
+// vista de una sola columna por tabs en mobile.
 
-export function TaskCard({ task, onOpen }) {
+export function TaskCard({ task, onOpen, onMore }) {
   const overdue = isOverdue(task.due_date, task.status);
   const hasRemoved = task.assignees?.some((a) => !a.is_active);
 
@@ -122,6 +134,17 @@ export function TaskCard({ task, onOpen }) {
         <span className="font-mono text-[10px] text-on-surface-variant opacity-60">
           #TASK-{task.task_number}
         </span>
+        {onMore && (
+          <button
+            type="button"
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => { e.stopPropagation(); onMore(task); }}
+            className="w-7 h-7 -mt-1 -mr-1 rounded-full flex items-center justify-center text-on-surface-variant hover:text-on-surface hover:bg-surface-variant/40 transition-colors"
+            aria-label="Acciones de tarea"
+          >
+            <span className="material-symbols-outlined text-[18px]">more_vert</span>
+          </button>
+        )}
       </div>
 
       {/* Badges */}
@@ -239,18 +262,122 @@ export function EmptyColumn({ status, isFiltered, onCreateClick, onClearFilters 
   );
 }
 
+// ── TaskActionSheet — bottom sheet mobile (mockup vista tablero móvil) ────────
+// Reemplaza el drag & drop en pantallas < md: una sola instancia global,
+// abierta desde el botón de 3 puntos de cualquier TaskCard. "Mover a" usa el
+// mismo `moveTask` optimista del drag; "Eliminar" pide confirmación inline
+// (AG-04: sin recuperación por UI, la acción es irreversible).
+
+export function TaskActionSheet({ task, deleting, deleteError, onChangeStatus, onEdit, onDelete, onClose }) {
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    const t = requestAnimationFrame(() => setOpen(true));
+    return () => cancelAnimationFrame(t);
+  }, []);
+
+  const handleClose = () => {
+    setOpen(false);
+    setTimeout(onClose, 250);
+  };
+
+  if (!task) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center md:hidden">
+      <div
+        className="absolute inset-0 transition-opacity duration-300"
+        style={{ background: "rgba(0,0,0,0.6)", opacity: open ? 1 : 0 }}
+        onClick={handleClose}
+      />
+      <div
+        className="relative w-full max-w-md rounded-t-2xl p-5 pb-8 flex flex-col gap-4 transition-transform duration-300 ease-out"
+        style={{
+          background: "rgba(30,32,35,0.97)",
+          backdropFilter: "blur(12px)",
+          borderTop: "1px solid #2D3135",
+          transform: open ? "translateY(0)" : "translateY(100%)",
+        }}
+      >
+        <div className="w-12 h-1 rounded-full mx-auto" style={{ background: "#554337" }} />
+
+        {!confirmDelete ? (
+          <div className="flex flex-col gap-1">
+            <h4 className="text-on-surface-variant text-xs font-semibold uppercase tracking-widest px-2 mb-1">
+              Acciones · #TASK-{task.task_number}
+            </h4>
+
+            {onChangeStatus && STATUS_OPTIONS.filter((s) => s.value !== task.status).map((s) => (
+              <button
+                key={s.value}
+                type="button"
+                onClick={() => { handleClose(); onChangeStatus(task.id, s.value); }}
+                className="w-full flex items-center gap-4 p-4 rounded-xl text-on-surface hover:bg-surface-variant/40 transition-colors text-left"
+              >
+                <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: s.dot }} />
+                <span className="text-sm">Mover a {s.label}</span>
+              </button>
+            ))}
+
+            {onEdit && (
+              <button
+                type="button"
+                onClick={() => { handleClose(); onEdit(task); }}
+                className="w-full flex items-center gap-4 p-4 rounded-xl text-on-surface hover:bg-surface-variant/40 transition-colors text-left"
+              >
+                <span className="material-symbols-outlined text-secondary">edit</span>
+                <span className="text-sm">Editar tarea</span>
+              </button>
+            )}
+
+            {onDelete && (
+              <button
+                type="button"
+                onClick={() => setConfirmDelete(true)}
+                className="w-full flex items-center gap-4 p-4 rounded-xl text-error hover:bg-error/10 transition-colors text-left"
+              >
+                <span className="material-symbols-outlined">delete</span>
+                <span className="text-sm">Eliminar</span>
+              </button>
+            )}
+          </div>
+        ) : (
+          <div className="flex flex-col gap-3 px-2">
+            <p className="text-on-surface text-sm">¿Eliminar esta tarea permanentemente? No se puede deshacer (AG-04).</p>
+            {deleteError && <p className="text-error text-xs">{deleteError}</p>}
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => setConfirmDelete(false)}
+                className="flex-1 py-3 rounded-full text-sm text-on-surface-variant"
+                style={{ border: "1px solid #2D3135" }}
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={() => onDelete(task.id)}
+                disabled={deleting}
+                className="flex-1 py-3 rounded-full text-sm font-semibold disabled:opacity-50"
+                style={{ background: "rgba(147,0,10,0.4)", color: "#ffb4ab", border: "1px solid rgba(255,180,171,0.3)" }}
+              >
+                {deleting ? "Eliminando…" : "Confirmar"}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── TaskFormModal — Crear y Editar (mockup #14) ───────────────────────────────
 // El status se edita aquí visualmente pero se envía por su propio endpoint
 // (PATCH /tasks/{id}/status) — el hook (useTasks) decide qué endpoints llamar.
 // Igual para assignee_ids: viaja por PATCH /tasks/{id}/assignees para no
 // saltarse la lógica ADR-03 (detener timer al pasar a 2+ asignados) que solo
 // vive en ese endpoint dedicado.
-
-const STATUS_OPTIONS = [
-  { value: "abierto",    label: "Abierto",    dot: "#ffb786" },
-  { value: "en_proceso", label: "En proceso", dot: "#4cd7f2" },
-  { value: "completo",   label: "Completo",   dot: "#4ade80" },
-];
 
 export function TaskFormModal({
   mode = "create",
@@ -596,7 +723,7 @@ export function TaskFormModal({
                       </button>
                       <button
                         type="button"
-                        onClick={onDelete}
+                        onClick={() => onDelete()}
                         disabled={deleting}
                         className="flex-1 py-2 rounded-full text-sm font-semibold disabled:opacity-50"
                         style={{ background: "rgba(147,0,10,0.4)", color: "#ffb4ab", border: "1px solid rgba(255,180,171,0.3)" }}

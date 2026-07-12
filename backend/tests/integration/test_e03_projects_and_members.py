@@ -517,3 +517,87 @@ async def test_audit_log_ownership_transferred(
     assert log is not None, "No se registró audit_log para ownership_transferred"
     assert log.action == "ownership_transferred"
     assert str(log.entity_id) == project_id
+
+
+# ── GET /projects/{id} — Sprint 4 · Objetivo 0 (gap arrastrado de S3) ─────────
+# BoardPage.jsx dependía de location.state para nombre/rol del proyecto;
+# este endpoint lo reemplaza y evita que se rompa con F5 o un link directo.
+
+
+async def test_get_project_incluye_my_role_y_member_count(
+    client: AsyncClient, db_session: AsyncSession
+):
+    """GET /projects/{id} retorna my_role y member_count para un miembro activo."""
+    await _register_and_verify(client, "getproj@test.dev", "getprojusr")
+    await _set_role(db_session, "getproj@test.dev", "editor")
+    headers = await _auth(client, "getproj@test.dev")
+
+    project = await _create_project(client, headers, "Proyecto GET detalle")
+    project_id = project["id"]
+
+    resp = await client.get(f"/api/v1/projects/{project_id}", headers=headers)
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["id"] == project_id
+    assert body["name"] == "Proyecto GET detalle"
+    assert body["my_role"] == "owner"
+    assert body["member_count"] == 1
+
+
+async def test_get_project_viewer_puede_leer(
+    client: AsyncClient, db_session: AsyncSession
+):
+    """Cualquier miembro activo puede leer el detalle, incluido viewer."""
+    await _register_and_verify(client, "getprojowner@test.dev", "getprojownerusr")
+    await _set_role(db_session, "getprojowner@test.dev", "editor")
+    owner_headers = await _auth(client, "getprojowner@test.dev")
+
+    project = await _create_project(client, owner_headers, "Proyecto con viewer")
+    project_id = project["id"]
+
+    await _register_and_verify(client, "getprojviewer@test.dev", "getprojviewerusr")
+    result = await db_session.execute(
+        select(User).where(User.email == "getprojviewer@test.dev")
+    )
+    viewer_user = result.scalar_one()
+    await client.post(
+        f"/api/v1/projects/{project_id}/members",
+        json={"user_id": str(viewer_user.id), "role": "viewer"},
+        headers=owner_headers,
+    )
+    viewer_headers = await _auth(client, "getprojviewer@test.dev")
+
+    resp = await client.get(f"/api/v1/projects/{project_id}", headers=viewer_headers)
+    assert resp.status_code == 200
+    assert resp.json()["my_role"] == "viewer"
+
+
+async def test_get_project_sin_membresia_403(
+    client: AsyncClient, db_session: AsyncSession
+):
+    """Usuario sin membresía activa recibe 403 (no 404 — no revela existencia)."""
+    await _register_and_verify(client, "getprojowner2@test.dev", "getprojowner2usr")
+    await _set_role(db_session, "getprojowner2@test.dev", "editor")
+    owner_headers = await _auth(client, "getprojowner2@test.dev")
+    project = await _create_project(client, owner_headers, "Proyecto ajeno")
+    project_id = project["id"]
+
+    await _register_and_verify(client, "outsider@test.dev", "outsiderusr")
+    outsider_headers = await _auth(client, "outsider@test.dev")
+
+    resp = await client.get(f"/api/v1/projects/{project_id}", headers=outsider_headers)
+    assert resp.status_code == 403
+
+
+async def test_get_project_inexistente_404(
+    client: AsyncClient, db_session: AsyncSession
+):
+    """Proyecto con UUID válido pero inexistente retorna 404."""
+    await _register_and_verify(client, "getproj404@test.dev", "getproj404usr")
+    await _set_role(db_session, "getproj404@test.dev", "editor")
+    headers = await _auth(client, "getproj404@test.dev")
+
+    resp = await client.get(
+        "/api/v1/projects/00000000-0000-0000-0000-000000000000", headers=headers
+    )
+    assert resp.status_code == 404

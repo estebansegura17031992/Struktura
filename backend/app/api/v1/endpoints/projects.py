@@ -316,6 +316,47 @@ async def list_projects(
     )
 
 
+@router.get(
+    "/{project_id}",
+    response_model=ProjectResponse,
+    responses={
+        403: {"description": "Sin membresía activa en el proyecto"},
+        404: {"description": "Proyecto no encontrado"},
+    },
+)
+async def get_project(
+    project_id: UUID,
+    membership: ProjectMembership,
+    db: DB,
+):
+    """
+    Detalle de un proyecto. Cualquier miembro activo puede leer (incluye
+    viewer). Mismo patrón de acceso que list_members/member_history —
+    reutiliza get_project_member vía ProjectMembership (403 si no hay
+    membresía, 404 si el proyecto no existe o está eliminado).
+
+    Cierra el gap arrastrado de Sprint 3: el tablero de Frontend
+    (BoardPage.jsx) dependía de location.state para mostrar nombre/rol
+    del proyecto, lo que se rompía con F5 o un link compartido directo.
+    """
+    repo = ProjectRepository(db)
+    project = await repo.get_active(project_id)
+    if not project:
+        raise AppBaseError("NOT_FOUND", "Proyecto no encontrado.", 404)
+
+    count_result = await db.execute(
+        select(func.count(ProjectMember.id)).where(
+            ProjectMember.project_id == project_id,
+            ProjectMember.removed_at.is_(None),
+        )
+    )
+    member_count = count_result.scalar_one()
+
+    return ProjectResponse.from_orm(
+        project, my_role=membership.role, member_count=member_count
+    )
+
+
 @router.patch(
     "/{project_id}",
     response_model=ProjectResponse,

@@ -1,0 +1,106 @@
+{
+  "info": {
+    "title": "Kanban MVP API — Contrato E04 Tasks (Día 2)",
+    "note": "Fragmento OpenAPI congelado, complementario a openapi_v2.json (spec completo del proyecto). La implementación funcional llega en Día 3 (ver app/api/v1/endpoints/tasks.py)."
+  },
+  "components": {
+    "schemas": {
+      "TaskPriority": { "type": "string", "enum": ["low", "medium", "high"] },
+      "TaskStatus": { "type": "string", "enum": ["abierto", "en_proceso", "completo"] },
+      "TaskAssigneeOut": {
+        "type": "object",
+        "required": ["id", "username", "is_active"],
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "username": { "type": "string" },
+          "avatar": { "type": "string", "nullable": true },
+          "is_active": { "type": "boolean" }
+        }
+      },
+      "TaskCreate": {
+        "type": "object",
+        "required": ["title", "priority", "project_id"],
+        "properties": {
+          "title": { "type": "string", "maxLength": 200 },
+          "description": { "type": "string", "nullable": true },
+          "priority": { "$ref": "#/components/schemas/TaskPriority" },
+          "project_id": { "type": "string", "format": "uuid" },
+          "due_date": { "type": "string", "format": "date", "nullable": true },
+          "timer_disabled": { "type": "boolean", "default": false },
+          "assignee_ids": {
+            "type": "array",
+            "items": { "type": "string", "format": "uuid" },
+            "description": "Máximo permitido = system_settings.max_task_assignees (5)"
+          }
+        }
+      },
+      "TaskUpdate": {
+        "type": "object",
+        "properties": {
+          "title": { "type": "string", "nullable": true },
+          "description": { "type": "string", "nullable": true },
+          "priority": { "$ref": "#/components/schemas/TaskPriority" },
+          "due_date": { "type": "string", "format": "date", "nullable": true },
+          "timer_disabled": { "type": "boolean", "nullable": true },
+          "assignee_ids": {
+            "type": "array",
+            "items": { "type": "string", "format": "uuid" },
+            "nullable": true
+          }
+        }
+      },
+      "TaskStatusUpdate": {
+        "type": "object",
+        "required": ["status"],
+        "properties": {
+          "status": { "$ref": "#/components/schemas/TaskStatus" }
+        }
+      },
+      "TaskOut": {
+        "type": "object",
+        "required": [
+          "id", "task_number", "title", "priority", "status",
+          "project_id", "created_by", "timer_disabled", "assignees",
+          "created_at", "updated_at"
+        ],
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "task_number": { "type": "integer", "description": "SERIAL global (AG-05)" },
+          "title": { "type": "string" },
+          "description": { "type": "string", "nullable": true },
+          "priority": { "$ref": "#/components/schemas/TaskPriority" },
+          "status": { "$ref": "#/components/schemas/TaskStatus" },
+          "project_id": { "type": "string", "format": "uuid" },
+          "created_by": { "type": "string", "format": "uuid" },
+          "due_date": { "type": "string", "format": "date", "nullable": true },
+          "timer_disabled": { "type": "boolean" },
+          "assignees": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/TaskAssigneeOut" }
+          },
+          "created_at": { "type": "string", "format": "date-time" },
+          "updated_at": { "type": "string", "format": "date-time" }
+        }
+      },
+      "PaginatedTasks": {
+        "type": "object",
+        "properties": {
+          "items": { "type": "array", "items": { "$ref": "#/components/schemas/TaskOut" } },
+          "page": { "type": "integer" },
+          "page_size": { "type": "integer" },
+          "total": { "type": "integer" },
+          "total_pages": { "type": "integer" },
+          "next_page": { "type": "integer", "nullable": true },
+          "previous_page": { "type": "integer", "nullable": true }
+        }
+      }
+    }
+  },
+  "paths_preview_dia3": [
+    "POST /tasks",
+    "GET /tasks/{id}",
+    "PATCH /tasks/{id}",
+    "DELETE /tasks/{id}",
+    "PATCH /tasks/{id}/status"
+  ]
+}

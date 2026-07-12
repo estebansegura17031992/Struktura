@@ -66,7 +66,7 @@ export default function ProjectsPage() {
   const canCreate = ["editor", "admin"].includes(user?.role);
 
   const handleMembers = (project) => navigate(`/projects/${project.id}/members`);
-  const handleView    = (project) => navigate(`/projects/${project.id}/members`); // o la ruta del kanban cuando exista
+  const handleView    = (project) => navigate(`/projects/${project.id}/board`, { state: { project } });
 
   return (
     <div className="min-h-screen font-['Inter'] text-on-background" style={{ backgroundColor: "#111316" }}>

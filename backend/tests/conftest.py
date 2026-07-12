@@ -1,4 +1,4 @@
-﻿# tests/conftest.py
+# tests/conftest.py
 """
 Estrategia robusta contra el bug de event loop de pytest-asyncio + asyncpg:
 
@@ -241,6 +241,3 @@ async def auth_headers(client: AsyncClient, test_user: dict) -> dict:
     assert response.status_code == 200, response.json()
     token = response.json()["access_token"]
     return {"Authorization": f"Bearer {token}"}
-
-
-

@@ -1,4 +1,4 @@
-﻿"""
+"""
 Alembic env.py â€” usa DATABASE_URL_SYNC (psycopg2, no asyncpg).
 DATABASE_URL (asyncpg) es solo para uvicorn/SQLAlchemy async.
 """

@@ -1,4 +1,4 @@
-﻿"""ConfiguraciÃ³n centralizada con pydantic-settings."""
+"""ConfiguraciÃ³n centralizada con pydantic-settings."""
 
 from functools import lru_cache
 from typing import Literal
@@ -72,4 +72,3 @@ def get_settings() -> Settings:
 
 
 settings = get_settings()
-

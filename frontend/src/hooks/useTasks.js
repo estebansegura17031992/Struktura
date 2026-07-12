@@ -163,6 +163,32 @@ export function useTasks(projectId) {
     }
   }, [editingTask]);
 
+  // ── Drag & drop — cambio de estado optimista con rollback (R-0402) ────────
+  const [dragError, setDragError] = useState(null);
+
+  const moveTask = useCallback(async (taskId, newStatus) => {
+    const task = tasks.find((t) => t.id === taskId);
+    if (!task || task.status === newStatus) return;
+
+    const previousStatus = task.status;
+    setDragError(null);
+    setTasks((prev) => prev.map((t) => (t.id === taskId ? { ...t, status: newStatus } : t)));
+
+    try {
+      const updated = await updateTaskStatus(taskId, newStatus);
+      setTasks((prev) => prev.map((t) => (t.id === taskId ? updated : t)));
+    } catch (e) {
+      // Rollback — la tarjeta vuelve a su columna original (R-0402: optimistic
+      // update con rollback correcto ante error del backend).
+      setTasks((prev) => prev.map((t) => (t.id === taskId ? { ...t, status: previousStatus } : t)));
+      setDragError(
+        e?.response?.status === 403
+          ? "No tienes permisos para mover esta tarea."
+          : "Error al mover la tarea. Intenta de nuevo."
+      );
+    }
+  }, [tasks]);
+
   const [deleting, setDeleting]     = useState(false);
   const [deleteError, setDeleteError] = useState(null);
 
@@ -203,5 +229,7 @@ export function useTasks(projectId) {
     updating, editError, submitEditTask,
     // Eliminar
     deleting, deleteError, submitDeleteTask,
+    // Drag & drop
+    dragError, moveTask,
   };
 }

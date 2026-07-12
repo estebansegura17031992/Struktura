@@ -10,17 +10,63 @@
  *  - Empty state por columna: CTA solo en "Abierto" sin filtro (AG-03),
  *    "Sin tareas con este filtro" cuando hay filtros activos (DU-03)
  *
- * Drag & drop (@dnd-kit/core, artefacto 11) se implementa en un pase
- * siguiente. Este pase cubre los mockups #1 (tablero), #2 (tarjeta) y #14
- * (modal de creación/edición) ya aprobados.
+ * Drag & drop (artefacto 11, R-0402): @dnd-kit/core. Cada TaskCard es
+ * arrastrable, cada columna es zona de drop (activa aunque esté vacía —
+ * DU-03). El cambio de estado es optimista con rollback si el backend
+ * rechaza el movimiento (403 — viewer nunca puede, ni owner/editor puede
+ * mover a un estado que no exista). Solo owner/editor pueden arrastrar
+ * (mismo gate que `canCreate`, igual que el backend en
+ * require_task_status_permission — viewer nunca puede, ni siquiera
+ * estando asignado). En mobile, el modal de edición (artefacto 14) ya
+ * ofrece un <select> de estado como alternativa al drag & drop.
  */
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { Link, useNavigate, useParams, useLocation } from "react-router-dom";
+import {
+  DndContext, DragOverlay, PointerSensor, TouchSensor,
+  useSensor, useSensors, useDraggable, useDroppable,
+} from "@dnd-kit/core";
 import { useAuthStore } from "@/store/authStore";
 import { logoutUser } from "@/api/auth";
 import { useTasks } from "@/hooks/useTasks";
 import { useMembers } from "@/hooks/useMembers";
 import { TaskCard, TaskCardSkeleton, EmptyColumn, TaskFormModal } from "@/components/tasks/TaskComponents";
+
+// ── Drag & drop wrappers ─────────────────────────────────────────────────────
+
+function DraggableTaskCard({ task, disabled, onOpen }) {
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+    id: task.id,
+    disabled,
+  });
+
+  return (
+    <div
+      ref={setNodeRef}
+      {...(disabled ? {} : { ...listeners, ...attributes })}
+      style={{
+        transform: transform ? `translate3d(${transform.x}px, ${transform.y}px, 0)` : undefined,
+        opacity: isDragging ? 0.35 : 1,
+        cursor: disabled ? "default" : "grab",
+      }}
+    >
+      <TaskCard task={task} onOpen={onOpen} />
+    </div>
+  );
+}
+
+function DroppableColumn({ status, children }) {
+  const { setNodeRef, isOver } = useDroppable({ id: status });
+  return (
+    <div
+      ref={setNodeRef}
+      className="flex flex-col gap-3 flex-1 rounded-2xl transition-colors p-1 -m-1"
+      style={isOver ? { background: "rgba(76,215,242,0.06)", outline: "2px dashed rgba(76,215,242,0.35)" } : {}}
+    >
+      {children}
+    </div>
+  );
+}
 
 // ── Sidebar nav ────────────────────────────────────────────────────────────────
 
@@ -67,11 +113,33 @@ export default function BoardPage() {
     updating, editError, submitEditTask,
     // Eliminar
     deleting, deleteError, submitDeleteTask,
+    // Drag & drop
+    dragError, moveTask,
   } = useTasks(projectId);
 
   // Miembros activos del proyecto — fuente del selector de asignados (solo
   // miembros activos pueden asignarse a tareas nuevas, R-0401).
   const { members } = useMembers(projectId);
+
+  // ── Drag & drop ────────────────────────────────────────────────────────
+  const [activeTask, setActiveTask] = useState(null);
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 8 } })
+  );
+  const allTasks = COLUMNS.flatMap((c) => columns[c.status] ?? []);
+
+  const handleDragStart = (event) => {
+    setActiveTask(allTasks.find((t) => t.id === event.active.id) ?? null);
+  };
+
+  const handleDragEnd = (event) => {
+    setActiveTask(null);
+    const newStatus = event.over?.id;
+    const taskId = event.active?.id;
+    if (!newStatus || !taskId) return;
+    moveTask(taskId, newStatus);
+  };
 
   // Viewer solo puede filtrar assigned_to=me (R-0403) — se fuerza en cliente.
   useEffect(() => {
@@ -237,6 +305,15 @@ export default function BoardPage() {
 
           {/* Board */}
           <div className="flex-1 overflow-x-auto p-6">
+            {dragError && (
+              <div
+                className="mb-4 px-4 py-3 rounded-xl flex items-center gap-3"
+                style={{ background: "rgba(255,180,171,0.1)", border: "1px solid rgba(255,180,171,0.3)" }}
+              >
+                <span className="material-symbols-outlined text-error text-[18px]">error</span>
+                <span className="text-error text-sm">{dragError}</span>
+              </div>
+            )}
             {error ? (
               <div
                 className="px-5 py-4 rounded-xl flex items-center gap-3"
@@ -249,47 +326,62 @@ export default function BoardPage() {
                 </button>
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 h-full min-w-[900px] md:min-w-0">
-                {COLUMNS.map((col) => {
-                  const items = columns[col.status] ?? [];
-                  return (
-                    <div key={col.status} className="flex flex-col gap-4">
-                      <div
-                        className="flex justify-between items-center px-4 py-2 rounded-lg"
-                        style={{ background: "#1e2023", border: "1px solid rgba(85,67,55,0.15)" }}
-                      >
-                        <div className="flex items-center gap-2">
-                          <span className="w-2 h-2 rounded-full" style={{ background: col.dot }} />
-                          <h2 className="text-xs font-bold tracking-wider text-on-surface uppercase">{col.label}</h2>
-                        </div>
-                        <span
-                          className="px-2 py-0.5 rounded text-xs font-bold text-on-surface-variant"
-                          style={{ background: "#333538" }}
+              <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 h-full min-w-[900px] md:min-w-0">
+                  {COLUMNS.map((col) => {
+                    const items = columns[col.status] ?? [];
+                    return (
+                      <div key={col.status} className="flex flex-col gap-4">
+                        <div
+                          className="flex justify-between items-center px-4 py-2 rounded-lg"
+                          style={{ background: "#1e2023", border: "1px solid rgba(85,67,55,0.15)" }}
                         >
-                          {loading ? "…" : items.length}
-                        </span>
-                      </div>
+                          <div className="flex items-center gap-2">
+                            <span className="w-2 h-2 rounded-full" style={{ background: col.dot }} />
+                            <h2 className="text-xs font-bold tracking-wider text-on-surface uppercase">{col.label}</h2>
+                          </div>
+                          <span
+                            className="px-2 py-0.5 rounded text-xs font-bold text-on-surface-variant"
+                            style={{ background: "#333538" }}
+                          >
+                            {loading ? "…" : items.length}
+                          </span>
+                        </div>
 
-                      <div className="flex flex-col gap-3 flex-1">
-                        {loading ? (
-                          Array.from({ length: 2 }).map((_, i) => <TaskCardSkeleton key={i} />)
-                        ) : items.length === 0 ? (
-                          <EmptyColumn
-                            status={col.status}
-                            isFiltered={hasActiveFilters}
-                            onCreateClick={canCreate ? openCreateTask : undefined}
-                            onClearFilters={hasActiveFilters ? clearFilters : undefined}
-                          />
-                        ) : (
-                          items.map((task) => (
-                            <TaskCard key={task.id} task={task} onOpen={canCreate ? openEditTask : undefined} />
-                          ))
-                        )}
+                        <DroppableColumn status={col.status}>
+                          {loading ? (
+                            Array.from({ length: 2 }).map((_, i) => <TaskCardSkeleton key={i} />)
+                          ) : items.length === 0 ? (
+                            <EmptyColumn
+                              status={col.status}
+                              isFiltered={hasActiveFilters}
+                              onCreateClick={canCreate ? openCreateTask : undefined}
+                              onClearFilters={hasActiveFilters ? clearFilters : undefined}
+                            />
+                          ) : (
+                            items.map((task) => (
+                              <DraggableTaskCard
+                                key={task.id}
+                                task={task}
+                                disabled={!canCreate}
+                                onOpen={canCreate ? openEditTask : undefined}
+                              />
+                            ))
+                          )}
+                        </DroppableColumn>
                       </div>
+                    );
+                  })}
+                </div>
+
+                <DragOverlay>
+                  {activeTask && (
+                    <div style={{ transform: "rotate(2deg)", boxShadow: "0 12px 32px rgba(0,0,0,0.5)" }}>
+                      <TaskCard task={activeTask} />
                     </div>
-                  );
-                })}
-              </div>
+                  )}
+                </DragOverlay>
+              </DndContext>
             )}
           </div>
         </main>

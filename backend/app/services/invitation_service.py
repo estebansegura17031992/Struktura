@@ -134,6 +134,22 @@ class InvitationService:
 
         return InvitationOut.model_validate(invitation)
 
+    async def list_invitations(
+        self,
+        *,
+        project_id: UUID,
+        actor: User,
+        membership: ProjectMember,
+    ) -> list[InvitationOut]:
+        """Solo owner/admin puede ver la lista — mismo gate que crear/cancelar
+        (Frontend Sprint 4 · Objetivo 6, endpoint agregado junto con la UI
+        porque el backend no lo había expuesto)."""
+        if membership.role != "owner" and actor.role != "admin":
+            raise InsufficientPermissionsError()
+
+        invitations = await self._repo.list_for_project(project_id)
+        return [InvitationOut.model_validate(i) for i in invitations]
+
     # ── Objetivo 8 ───────────────────────────────────────────────────────
 
     async def _resolve_pending(self, raw_token: str):

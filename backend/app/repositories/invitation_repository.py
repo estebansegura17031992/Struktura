@@ -93,6 +93,16 @@ class InvitationRepository:
             .values(**values)
         )
 
+    async def list_for_project(self, project_id: UUID) -> list[ProjectInvitation]:
+        """Todas las invitaciones del proyecto (cualquier status), más
+        recientes primero — para la vista de gestión (Frontend Objetivo 6)."""
+        result = await self.session.execute(
+            select(ProjectInvitation)
+            .where(ProjectInvitation.project_id == project_id)
+            .order_by(ProjectInvitation.created_at.desc())
+        )
+        return list(result.scalars().all())
+
     async def list_expired_pending(self) -> list[ProjectInvitation]:
         """Invitaciones 'pending' cuyo expires_at ya pasó — Objetivo 8 (job)."""
         result = await self.session.execute(

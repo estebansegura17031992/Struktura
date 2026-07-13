@@ -598,31 +598,6 @@ async def transfer_ownership(
 # es suficiente para resolver todo.
 
 
-@router.get(
-    "/{project_id}/invitations",
-    response_model=list[InvitationOut],
-    responses={
-        403: {
-            "description": "Sin permisos — solo owner o admin puede ver invitaciones"
-        },
-        404: {"description": "Proyecto no encontrado"},
-    },
-)
-async def list_invitations(
-    project_id: UUID,
-    current_user: CurrentUser,
-    membership: ProjectMembership,
-    db: DB,
-):
-    """Lista todas las invitaciones del proyecto (pending/accepted/rejected/
-    expired) — endpoint agregado junto con la vista de gestión de invitaciones
-    del Frontend (Sprint 4 · Objetivo 6); no existía antes."""
-    service = InvitationService(db)
-    return await service.list_invitations(
-        project_id=project_id, actor=current_user, membership=membership
-    )
-
-
 @router.post(
     "/{project_id}/invitations",
     response_model=InvitationOut,

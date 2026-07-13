@@ -602,7 +602,9 @@ async def transfer_ownership(
     "/{project_id}/invitations",
     response_model=list[InvitationOut],
     responses={
-        403: {"description": "Sin permisos — solo owner o admin puede ver invitaciones"},
+        403: {
+            "description": "Sin permisos — solo owner o admin puede ver invitaciones"
+        },
         404: {"description": "Proyecto no encontrado"},
     },
 )
